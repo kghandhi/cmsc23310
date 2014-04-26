@@ -1,0 +1,79 @@
+class L(object):
+    """A Lieutentant in the algorithm"""
+    def __init__(self, m, loyalty, order):
+        self.loyalty = loyalty
+        self.m = m
+        # (the first order comes when its initialized), but we add to this list without recreating
+        self.orders = [order]
+
+    def receive (self, order):
+        self.orders.append(self.order)
+
+    def change_m (self, new_m):
+        self.m = new_m
+
+    
+
+class C(object):
+    """The Commander in the algorithm; note generals will take on this position every recurrsion"""
+    def __init__(self, L_loyalties, m, loyalty, order, singularity = 0): 
+        #singularity is purely for my own interest, can be used to see if the traitor general's orders matter 
+        self.loyalty = loyalty
+        self.m = m
+        self.order = order
+        self.singularity = singularity
+        self.ls = self.spawn(self, L_loyalties)
+        
+
+    def spawn (self, L_loyalties):
+        lst = []
+        if (self.loyalty == 'L'):
+            for i in xrange(len(L_loyalties)):
+                lst.append(L(self.m - 1, L_loyalties[i], self.order))
+        else:
+            if self.singularity:
+                for i in xrange (len(L_loyalties[i])):
+                    lst.append(L(self.m - 1, L_loyalties[i], self.order))
+            else:
+                for i in xrange(len(L_loyalties)):
+                    if ((i % 2) == 0):
+                        lst.append(L(self.m - 1, L_loyalties[i], "ATTACK"))
+                    else:
+                        lst.append(L(self.m - 1, L_loyalties[i], "RETREAT"))
+        return lst
+
+    def relay (self):
+        if (self.loyalty == 'L'):
+            for i in xrange (len(self.ls)):
+                self.ls[i].receive(self.order)
+                self.ls[i].change_m(self.m - 1)
+        else:
+            if self.singularity:
+                for i in xrange (len(self.ls)):
+                    self.ls[i].receive(self.order)
+                    self.ls[i].change_m(self.m - 1)
+            else:
+                for i in xrange(len(self.ls)):
+                    if ((i % 2) == 0):
+                       self.ls[i].receive("ATTACK")
+                       self.ls[i].change_m(self.m - 1)
+                    else:
+                       self.ls[i].receive("RETREAT")
+                       self.ls[i].change_m(self.m - 1)
+                
+
+
+def main(m, loyalties, order):
+    ls = []
+    L_loyalties = loyalties[1:]
+    commander = C(L_loyalties, m, loyalties[1], order)
+    ls = commander.ls
+  
+    for it in xrange(m):
+        # commander relays to Ls then Ls relay to rest of Ls then majority taken?
+
+    
+
+
+if __name__ == '__main__':
+    main(argv[1], argv[2].split(''), argv[3])
