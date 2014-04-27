@@ -22,41 +22,43 @@ class General(object):
 
     def receive (self, sender, order, ls):
         self.orders.append(order[0] if self != sender else " ")
-        new_order = majority(self.orders)
-        print new_order
+        #decision = majority(self.orders)[0]
+        #new_order = 'R' if decision == 'T' else decision
+       
         #implement OM(m-1)
         new_ls = [l for l in ls if l != sender]
-        self.m -= 1
-        if self.m >= 0:
-            run(self.m, new_ls)
+       
+        if self.m > 0:
+            self.m -= 1
+            run(self.m, new_ls, order)
         
 
-    def _relay_unloyal(self, ls):
-        orders = [switch(self.orders[0]) if (i%2) else self.orders[0] for i in xrange(len(ls))]
-        for l, order in zip(ls, orders):
+    def _relay_unloyal(self, ls, order):
+        orders = [switch(order) if (i%2) else order for i in xrange(len(ls))]
+        for l, order1 in zip(ls, orders):
+            l.receive(self, order1, ls)
+           
+    def _relay_loyal(self, ls, order):
+        for l in ls:
             l.receive(self, order, ls)
            
-    def _relay_loyal(self, ls):
-        for l in ls:
-            l.receive(self, self.orders[0], ls)
-           
-    def relay(self, ls):
+    def relay(self, ls, order):
         LOG.debug("Lieutenant ID = {}, m = {}".format(self.ID, self.m))
 
         if (self.loyalty == 'L'):
-            self._relay_loyal(ls)
+            self._relay_loyal(ls, order)
         else:
-            self._relay_unloyal(ls)
+            self._relay_unloyal(ls, order)
         return ls
 
-def run (m, ls):
+def run (m, ls, order):
     for _ in xrange(m, 0, -1):
         for i in xrange (len(ls)):
-            ls = ls[i].relay(ls)
+            ls = ls[i].relay(ls, order)
         
-        # for i in xrange(len(ls)):
-        #     decision = majority(ls[i].orders)[0]
-        #     ls[i].orders = ['R' if decision == 'T' else decision
+    # for i in xrange(len(ls)):
+    #     decision = majority(ls[i].orders)[0]
+    #     ls[i].orders = ['R' if decision == 'T' else decision]
                             
     
     return ls
@@ -74,14 +76,12 @@ def majority (orders):
         else:
             return "RETREAT"
 
-def execute(m, ls):
-    run(m, ls)
+def execute(m, ls, order):
+    run(m, ls, order)
     for i in xrange(len(ls)):
         orders = ls[i].orders
         decision_order = majority(orders)
         print orders[0] + ' ' + ''.join(orders[1:]) + ' ' + decision_order
-
-
 
 def spawn (L_loyalties, loyalty, m, order):
     ret = []
@@ -98,7 +98,7 @@ def main(m, loyalties, order):
     #list of n-1 general lietenants, init by commander
     ls = spawn(loyalties[1:], loyalties[0], m, order)
     
-    execute(m, ls)
+    execute(m, ls, order)
     
     
 if __name__ == '__main__':
