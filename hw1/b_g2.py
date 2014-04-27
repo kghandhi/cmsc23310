@@ -49,6 +49,7 @@ class General(object):
             self._relay_loyal(ls, order)
         else:
             self._relay_unloyal(ls, order)
+        
         return ls
 
 def run (m, ls, order):
