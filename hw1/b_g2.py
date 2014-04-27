@@ -12,25 +12,24 @@ def switch(order):
 
 class General(object):
     """A Lieutentant in the algorithm"""
-    def __init__(self, m, loyalty, order, ID, singularity=False):
+    def __init__(self, m, loyalty, order, ID):
         self.loyalty = loyalty
-        self.m = m
-        self.orders = [order[0]]
+        self.m = m-1
+        self.orders = {[0]: [(0,order[0])]}
         self.ID = ID
-        self.singularity = singularity
-        self.sender = (0, ID)
 
     def receive (self, sender, order, ls):
-        self.orders.append(order[0] if self != sender else " ")
-        #decision = majority(self.orders)[0]
-        #new_order = 'R' if decision == 'T' else decision
-       
-        #implement OM(m-1)
-        new_ls = [l for l in ls if l != sender]
+        if sender in self.orders:
+            self.orders[sender].append(order[0] if self != sender else ' ')
+           
+        else:
+            self.orders[sender] = [(sender.ID, (order[0] if self != sender else ' '))]
+            
+        new_ls = [l for l in ls if (l != sender) and (l != self)]
        
         if self.m > 0:
             self.m -= 1
-            run(self.m, new_ls, order)
+            run(self.m, new_ls, order, sender.append(self))
         
 
     def _relay_unloyal(self, ls, order):
@@ -52,8 +51,8 @@ class General(object):
         
         return ls
 
-def run (m, ls, order):
-    for _ in xrange(m, 0, -1):
+def run (m, ls, order, sender):
+    for _ in xrange(m, -1, -1):
         for i in xrange (len(ls)):
             ls = ls[i].relay(ls, order)
         
@@ -61,12 +60,23 @@ def run (m, ls, order):
     #     decision = majority(ls[i].orders)[0]
     #     ls[i].orders = ['R' if decision == 'T' else decision]
                             
-    
     return ls
 
-def majority (orders):
-        #give it an unsorted orders list
+def majority_t (orders):
     dic = {'A': 0, 'R': 0, ' ': 0}
+    
+    for order in orders:
+        dic[order[1]] = dic[order[1]] + 1
+    if dic['A'] == dic['R']:
+        return "TIE"
+    else:
+        if dic['A'] > dic['R']:
+            return "ATTACK"
+        else:
+            return "RETREAT"
+def majority(orders):
+    dic = {'A': 0, 'R': 0, ' ': 0, 'T': 0}
+    
     for order in orders:
         dic[order] = dic[order] + 1
     if dic['A'] == dic['R']:
@@ -78,21 +88,32 @@ def majority (orders):
             return "RETREAT"
 
 def execute(m, ls, order):
-    run(m, ls, order)
-    for i in xrange(len(ls)):
+    run(m, ls, order, ls[0])
+
+    for i in xrange(1,len(ls)):
         orders = ls[i].orders
-        decision_order = majority(orders)
-        print orders[0] + ' ' + ''.join(orders[1:]) + ' ' + decision_order
+        print orders
+    #     decisions = []
+    #     decisions = orders[1][0][1]
+    #     for j in xrange(len(ls)):
+            
+            
+            
+    #         curr = majority_t(orders[0])[0]
+    #         decisions.append(curr if (curr != 'T') else 'R')
+      
+    #     print orders[m][0][-1] + ' ' + ''.join(decisions) + ' ' + majority(decisions)
 
 def spawn (L_loyalties, loyalty, m, order):
-    ret = []
+    ret = [General(m, loyalty, order, 0)]
     for i in xrange(len(L_loyalties)):
         if loyalty == 'L':
-            ret.append(General(m - 1, L_loyalties[i], order, i))
+            new = General(m, L_loyalties[i], order, i+1)
+            ret.append(new)
         elif ((i % 2) == 0):
-            ret.append(General(m - 1, L_loyalties[i], "ATTACK", i))
+            ret.append(General(m, L_loyalties[i], "ATTACK", i+1))
         else:
-            ret.append(General(m - 1, L_loyalties[i], "RETREAT", i))
+            ret.append(General(m, L_loyalties[i], "RETREAT", i+1))
     return ret
 
 def main(m, loyalties, order):
@@ -103,8 +124,6 @@ def main(m, loyalties, order):
     
     
 if __name__ == '__main__':
-    # main(int(argv[1]), list(argv[2]), argv[3])
-    # argv[1] has our file..
     for line in open(argv[1]):
         str_m, str_loyalties, _order = line.strip('\n').split(" ")
         if((str_loyalties == _order) and _order == "END"):
