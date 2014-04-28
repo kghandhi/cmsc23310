@@ -16,7 +16,7 @@ class General(object):
         self.loyalty = loyalty
         self.orders = {}
         self.ID = ID
-        self.order = (0,order)
+        self.order = order
 
     def receive(self, sender, order, ls):
         if sender in self.orders:
@@ -25,22 +25,22 @@ class General(object):
             self.orders[sender] = [order[0]]
             
         new_ls = [l for l in ls if (l != sender) and (l != self)]
-       
+      
         if self.m > 0:
             self.m -= 1
-            self.order = (sender, order)
-            run(self.m, new_ls, order, self)
+           
+            run(self.m, new_ls, order, sender + str(self.ID))
 
     def _relay_unloyal(self, ls, order, sender):
         orders = [switch(order) if (i%2) else order for i in xrange(len(ls))]
         for l, order1 in zip(ls, orders):
             if l != self:
-                l.receive(self, order1, ls)
+                l.receive(sender+str(self.ID), order1, ls)
            
     def _relay_loyal(self, ls, order, sender):
         for l in ls:
             if l != self:
-                l.receive(sender.append(self), order, ls)
+                l.receive(sender+ str(self.ID), order, ls)
            
     def relay(self, ls, order, sender):
         LOG.debug("Lieutenant ID = {}, m = {}".format(self.ID, self.m))
@@ -65,7 +65,7 @@ def spawn (L_loyalties, loyalty, m, order):
     return ret
 
 def run (m, ls, order, sender):
-    for _ in xrange(m, -1, -1):
+    for _ in xrange(m-1, -1, -1):
         for i in xrange(1, len(ls)):
             ls = ls[i].relay(ls, order, sender)
     return ls
@@ -85,15 +85,17 @@ def majority(orders):
 
 def execute(m, ls, order):
     for i in xrange(1, len(ls)):
-        print ls[i].orders
-        #for j in xrange(len(ls)):
-           
+        
+        orders = ls[i].orders
+        for j in xrange(len(ls)):
+            orders[j]
+       print ls[i].order + ' ' +     
             
 def main(m, loyalties, order):
     ls = spawn(loyalties[1:], loyalties[0], m, order)
     for i in xrange(1, len(ls)):
-        ls[i].receive([ls[0]], ls[i].order, ls)
-
+        ls[i].receive(str(ls[0].ID), ls[i].order, ls)
+    
     execute(m, ls, order)
     
     
