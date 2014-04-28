@@ -15,19 +15,18 @@ class General(object):
     def __init__(self, m, loyalty, order, ID):
         self.loyalty = loyalty
         self.m = m - 1
-        self.orders = [order[0]]
+        self.orders = []
         self.ID = ID
+        self.order = order
 
-    def receive (self, sender, order, ls):
-        self.orders.append(order[0] if self != sender else " ")
-        new_order = majority(self.orders)
-        print new_order
-        #implement OM(m-1)
-        new_ls = [l for l in ls if l != sender]
-        
-        if self.m > 0:
+    def receive(self, sender, order, ls):
+        if self.m > 0:      
+            self.orders.append((sender.apend(self.ID),order[0]))
             self.m -= 1
-            run(self.m, new_ls)
+            new_ls = [l for l in ls if (l != sender) and (l != self)]
+            run(self.m, new_ls, order, sender.append(self.ID))
+        else:
+            self.orders.append((sender, order[0]))
         
 
     def _relay_unloyal(self, ls):

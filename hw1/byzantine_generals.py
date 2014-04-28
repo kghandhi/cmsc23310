@@ -12,35 +12,31 @@ def switch(order):
 
 class General(object):
     def __init__(self, m, loyalty, order, ID):
-        self.m = m - 1 
+        self.m = m 
         self.loyalty = loyalty
-        self.orders = {}
+        self.orders = [([0, ID], order[0])]
         self.ID = ID
         self.order = order
 
     def receive(self, sender, order, ls):
-        if sender in self.orders:
-            self.orders[sender].append(order[0])
-        else:
-            self.orders[sender] = [order[0]]
-            
-        new_ls = [l for l in ls if (l != sender) and (l != self)]
-      
-        if self.m > 0:
+        if self.m > 0:      
+            self.orders.append((sender.append(self.ID), order[0])) #this should possibly be sender not appended
             self.m -= 1
-           
-            run(self.m, new_ls, order, sender + str(self.ID))
-
+            new_ls = [l for l in ls if (l.ID != sender[-1]) and (l.ID != self.ID)]
+            run(self.m, new_ls, order, sender.append(self.ID)) #this also
+        else:
+            self.orders.append((sender, order[0]))
+  
     def _relay_unloyal(self, ls, order, sender):
         orders = [switch(order) if (i%2) else order for i in xrange(len(ls))]
         for l, order1 in zip(ls, orders):
             if l != self:
-                l.receive(sender+str(self.ID), order1, ls)
+                l.receive(sender.append(self.ID), order1, ls)
            
     def _relay_loyal(self, ls, order, sender):
         for l in ls:
             if l != self:
-                l.receive(sender+ str(self.ID), order, ls)
+                l.receive(sender.append(self.ID), order, ls)
            
     def relay(self, ls, order, sender):
         LOG.debug("Lieutenant ID = {}, m = {}".format(self.ID, self.m))
@@ -52,8 +48,8 @@ class General(object):
         
         return ls
 
-def spawn (L_loyalties, loyalty, m, order):
-    ret = [General(m, loyalty, order, 0)] #create commander
+def spawn(L_loyalties, loyalty, m, order):
+    ret = [] 
     for i in xrange(len(L_loyalties)):
         if loyalty == 'L':
             new = General(m, L_loyalties[i], order, i+1)
@@ -65,16 +61,29 @@ def spawn (L_loyalties, loyalty, m, order):
     return ret
 
 def run (m, ls, order, sender):
-    for _ in xrange(m-1, -1, -1):
-        for i in xrange(1, len(ls)):
+    for _ in xrange(m, -1, -1):
+        for i in xrange(len(ls)):
             ls = ls[i].relay(ls, order, sender)
     return ls
+
+def majority_t(torders):
+    dic = {'A': 0, 'R': 0, ' ': 0, 'T': 0}
+    
+    for order in torders:
+        dic[order[1]] = dic[order[1]] + 1
+    if dic['A'] == dic['R']:
+        return '-'
+    else:
+        if dic['A'] > dic['R']:
+            return 'A'
+        else:
+            return 'R'
 
 def majority(orders):
     dic = {'A': 0, 'R': 0, ' ': 0, 'T': 0}
     
     for order in orders:
-        dic[order] = dic[order] + 1
+        dic[order[0]] = dic[order[0]] + 1
     if dic['A'] == dic['R']:
         return "TIE"
     else:
@@ -83,18 +92,36 @@ def majority(orders):
         else:
             return "RETREAT"
 
-def execute(m, ls, order):
-    for i in xrange(1, len(ls)):
+def condense(orders, m):
+    if m == 1:
+       return orders
+
+    ms = [order for order in orders if len(order[0]) == m + 1]
+    new_orders = [order for order in orders if len(order[0]) != m+1]
+
+    while ms:
+        to_match = ms[0][0][:-1]
+        matches = [order for order in ms if order[0][:-1] == to_match]
+        ms = [order for order in ms if order[0][:-1] != to_match]  
+
+        maj = majority_t(matches)[0]
         
-        orders = ls[i].orders
-        for j in xrange(len(ls)):
-            orders[j]
-       print ls[i].order + ' ' +     
+        new_orders.append((to_match, maj))
+   
+    return condense(new_orders, m-1)
+
+def execute(m, ls, order):
+    new_ls = run(m, ls, order, [0])
+    for i in xrange(len(new_ls)):
+        #print ls[i].orders
+        orders = sorted(condense(new_ls[i].orders, m), key=lambda x: x[0][1])
+        decisions = [order[1] for order in orders]
+        print decisions[0][0] + ' ' + str(decisions[1:]) + ' ' + majority(decisions)
+    return
             
 def main(m, loyalties, order):
     ls = spawn(loyalties[1:], loyalties[0], m, order)
-    for i in xrange(1, len(ls)):
-        ls[i].receive(str(ls[0].ID), ls[i].order, ls)
+    
     
     execute(m, ls, order)
     
