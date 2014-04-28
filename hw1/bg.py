@@ -18,32 +18,37 @@ class General(object):
         self.ID = ID
     
     def receive(self, sender, order, ls):
-        LOG.debug("receive, sender: {}".format(sender))
+        #print sender
         if self.m > 0:
-            self.orders.append((sender.append(self.ID), order[0]))
+            sender.append(self.ID)
+            self.orders.append((sender, order[0]))
             self.m -= 1
             new_ls = [l for l in ls if (l.ID != sender[-1]) and (l.ID != self.ID)]
-            run(self.m, new_ls, order, sender.append(self.ID))
+            
+            run(self.m, new_ls, order, sender)
         else:
-            self.orders.append((sender, order[0]))
+            if sender[-1] != self.ID:
+                sender.append(self.ID)
+                self.orders.append((sender, order[0]))
 
     def _relay_unloyal(self, ls, order, sender):
-        LOG.debug("_relay_unloyal, sender: {}".format(sender))
         orders = [switch(order) if (i%2) else order for i in xrange(len(ls))]
         for l, order1 in zip(ls, orders):
             if l != self:
-                l.receive(sender.append(self.ID), order1, ls)
+                print sender
+                #sender.append(self.ID) #this cant be here... fix
+                l.receive(sender, order1, ls)
 
     def _relay_loyal(self, ls, order, sender):
-        LOG.debug("_relay_loyal, sender: {}".format(sender))
         for l in ls:
             if l != self:
-                l.receive(sender.append(self.ID), order, ls)
+                #sender.append(self.ID)
+                l.receive(sender, order, ls)
 
     def relay(self, ls, order, sender):
-        LOG.debug("relay, sender: {}".format(sender))
+       
         LOG.debug("Lieutenant ID = {}, m = {}".format(self.ID, self.m))
-        
+        print sender
         if (self.loyalty == 'L'):
             self._relay_loyal(ls, order, sender)
         else:
@@ -64,9 +69,10 @@ def run (m, ls, order, sender):
     for _ in xrange(m-1, -1, -1):
         # for i in xrange(len(ls)):
         for l in ls:
-            LOG.debug("run, sender: {}".format(sender))
-            sender.append(l.ID)
-            l.relay(ls, order, sender)
+            temp = [x for x in sender]
+            temp.append(list(l.ID))
+            #sender.append(l.ID)
+            l.relay(ls, order, temp)
  
 
 def majority_t(torders):
@@ -116,17 +122,19 @@ def execute(m, ls, order):
     run(m, ls, order, [0])
     for i in xrange(len(ls)):
         #should this be the new list returned by run?
+        #print ls[i].ID
+        #print ls[i].orders
         condensed = condense(ls[i].orders, m)
-        LOG.debug("condensed: {}".format(condensed))
+        #print condensed     
         orders = sorted(condensed, key=lambda x: x[0][1])
         decisions = [order[1] for order in orders]
-
-        print decisions[i] + ' ' + str(decisions[:i]) + ' ' + str(decisions[i+1:]) + ' ' + majority(decisions)
+        #print decisions
+        print decisions[i] + ' ' + ''.join(decisions[:i]) + ' ' + ''.join(decisions[i+1:]) + ' ' + majority(decisions)
     return
 
 def main(m, loyalties, order):
     ls = spawn(loyalties[1:], loyalties[0], m, order)
-    print ls
+    #print ls
     execute(m, ls, order)
 
 if __name__ == '__main__':
