@@ -16,39 +16,44 @@ class General(object):
         self.loyalty = loyalty
         self.orders = [([0, ID], order[0])]
         self.ID = ID
-    
+        self.order = order
+
     def receive(self, sender, order, ls):
-        #print sender
         if self.m > 0:
-            sender.append(self.ID)
-            self.orders.append((sender, order[0]))
+            new_sender = [x for x in sender]
+            new_sender.append(self.ID)
+            self.orders.append((new_sender, order[0]))
             self.m -= 1
-            new_ls = [l for l in ls if (l.ID != sender[-1]) and (l.ID != self.ID)]
-            
-            run(self.m, new_ls, order, sender)
+            new_ls = [l for l in ls if (l.ID != sender[-1]) and (l.ID != self.ID)]         
+            run(self.m, new_ls, order, new_sender)
         else:
             if sender[-1] != self.ID:
-                sender.append(self.ID)
                 self.orders.append((sender, order[0]))
 
     def _relay_unloyal(self, ls, order, sender):
         orders = [switch(order) if (i%2) else order for i in xrange(len(ls))]
+        
         for l, order1 in zip(ls, orders):
             if l != self:
-                print sender
-                #sender.append(self.ID) #this cant be here... fix
-                l.receive(sender, order1, ls)
+                LOG.debug("SENDER = {}, TARGET = {}, order = {}".format(sender, l.ID, order))
+                temp = [x for x in sender]
+                #temp.append(self.ID)
+                l.receive(temp, order1, ls)
 
     def _relay_loyal(self, ls, order, sender):
         for l in ls:
+            
             if l != self:
-                #sender.append(self.ID)
-                l.receive(sender, order, ls)
+                
+                LOG.debug("SENDER = {}, TARGET = {}, order = {}".format(sender, l.ID,order))
+                temp = [x for x in sender]
+                #temp.append(self.ID)
+                l.receive(temp, order, ls)
 
     def relay(self, ls, order, sender):
-       
-        LOG.debug("Lieutenant ID = {}, m = {}".format(self.ID, self.m))
-        print sender
+        
+        #LOG.debug("Lieutenant ID = {}, m = {}".format(self.ID, self.m))
+        #print sender
         if (self.loyalty == 'L'):
             self._relay_loyal(ls, order, sender)
         else:
@@ -66,17 +71,18 @@ def spawn(L_loyalties, loyalty, m, order):
     return ret
 
 def run (m, ls, order, sender):
-    for _ in xrange(m-1, -1, -1):
-        # for i in xrange(len(ls)):
+    for _ in xrange(m, -1, -1):
         for l in ls:
+            
             temp = [x for x in sender]
-            temp.append(list(l.ID))
-            #sender.append(l.ID)
+            temp.append(l.ID)
+            #print temp
             l.relay(ls, order, temp)
+            #l.receive([0],order,ls)
+    return
  
-
 def majority_t(torders):
-    dic = {'A': 0, 'R': 0, ' ': 0, 'T': 0}
+    dic = {'A': 0, 'R': 0, ' ': 0, 'T': 0, '-': 0}
     
     for order in torders:
         dic[order[1]] = dic[order[1]] + 1
@@ -100,12 +106,13 @@ def majority(orders):
             return "ATTACK"
         else:
             return "RETREAT"
+
 def condense(orders, m):
     if m == 1:
         return orders
     
     ms = [order for order in orders if len(order[0]) == m + 1]
-    new_orders = [order for order in orders if len(order[0]) != m+1]
+    new_orders = [order for order in orders if len(order[0]) != m + 1]
     
     while ms:
         to_match = ms[0][0][:-1]
@@ -116,25 +123,34 @@ def condense(orders, m):
         
         new_orders.append((to_match, maj))
 
-    return condense(new_orders, m-1)
+    return condense(new_orders, m - 1)
 
 def execute(m, ls, order):
-    run(m, ls, order, [0])
+    run(m-1, ls, order, [0])
+    #for l in ls:
+     #   run(m, ls, l.order, [0])
     for i in xrange(len(ls)):
         #should this be the new list returned by run?
-        #print ls[i].ID
-        #print ls[i].orders
+        # print ls[i].ID
+        # print ls[i].orders
+        # print m
         condensed = condense(ls[i].orders, m)
         #print condensed     
         orders = sorted(condensed, key=lambda x: x[0][1])
+        #print orders
         decisions = [order[1] for order in orders]
         #print decisions
         print decisions[i] + ' ' + ''.join(decisions[:i]) + ' ' + ''.join(decisions[i+1:]) + ' ' + majority(decisions)
+    print
     return
 
 def main(m, loyalties, order):
     ls = spawn(loyalties[1:], loyalties[0], m, order)
     #print ls
+    #for l in ls:
+    #   print "This is for l.ID (%d): %d" %(l.ID, l.m)
+    #  l.receive([0],l.order, ls)
+    #print
     execute(m, ls, order)
 
 if __name__ == '__main__':

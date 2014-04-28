@@ -12,11 +12,10 @@ def switch(order):
 
 class General(object):
     def __init__(self, m, loyalty, order, ID):
-        self.m = m 
+        self.m = m   
         self.loyalty = loyalty
         self.orders = [([0, ID], order[0])]
         self.ID = ID
-        self.order = order
 
     def receive(self, sender, order, ls):
         if self.m > 0:      
@@ -55,13 +54,13 @@ def spawn(L_loyalties, loyalty, m, order):
             new = General(m, L_loyalties[i], order, i+1)
             ret.append(new)
         elif ((i % 2) == 0):
-            ret.append(General(m, L_loyalties[i], "ATTACK", i+1))
+            ret.append(General(m, L_loyalties[i], 'A', i+1))
         else:
-            ret.append(General(m, L_loyalties[i], "RETREAT", i+1))
+            ret.append(General(m, L_loyalties[i], 'R', i+1))
     return ret
 
 def run (m, ls, order, sender):
-    for _ in xrange(m, -1, -1):
+    for _ in xrange(m-1, -1, -1):
         for i in xrange(len(ls)):
             ls = ls[i].relay(ls, order, sender)
     return ls
