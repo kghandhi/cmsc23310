@@ -127,30 +127,19 @@ def condense(orders, m):
 
 def execute(m, ls, order):
     run(m-1, ls, order, [0])
-    #for l in ls:
-     #   run(m, ls, l.order, [0])
+    
     for i in xrange(len(ls)):
-        #should this be the new list returned by run?
-        # print ls[i].ID
-        # print ls[i].orders
-        # print m
         condensed = condense(ls[i].orders, m)
-        #print condensed     
         orders = sorted(condensed, key=lambda x: x[0][1])
-        #print orders
+        print orders
         decisions = [order[1] for order in orders]
-        #print decisions
         print decisions[i] + ' ' + ''.join(decisions[:i]) + ' ' + ''.join(decisions[i+1:]) + ' ' + majority(decisions)
     print
     return
 
 def main(m, loyalties, order):
     ls = spawn(loyalties[1:], loyalties[0], m, order)
-    #print ls
-    #for l in ls:
-    #   print "This is for l.ID (%d): %d" %(l.ID, l.m)
-    #  l.receive([0],l.order, ls)
-    #print
+    
     execute(m, ls, order)
 
 if __name__ == '__main__':
