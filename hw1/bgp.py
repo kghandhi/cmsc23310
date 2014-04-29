@@ -1,8 +1,10 @@
 from sys import argv
 import logging
+import fileinput
 
 logging.basicConfig(level=logging.DEBUG)
 LOG = logging.getLogger(__name__)
+LOG.setLevel(logging.INFO)
 
 #HELPER FUNCTIONS
 def order_to_int(order):
@@ -45,7 +47,7 @@ def majority(orders):
     else:
         return 'RETREAT'
 
-def condense(orders, m): #orders is a list of messages
+def condense(orders, m): 
     if m == 1:
         return orders
 
@@ -64,29 +66,15 @@ def condense(orders, m): #orders is a list of messages
         new_orders.append((to_match, maj))
 
     return condense(new_orders, m - 1) 
-
-# class Msg(object):
-#     def __init__(self, sender, order):
-#         self.sender = sender
-#         self.order = order
-
-#     def add_sender(self, new):
-#         new_sender = [x for x in self.sender]
-#         new_sender.append(new)
-#         return new_sender
-    
-#     def last(self):
-#         return self.sender[-1]
-    
+   
 class General(object):
     def __init__(self, m, loyalty, order, ID):
         self.m = m
-        self.orders = []#[([0], order)]
+        self.orders = []
         self.ID = ID
         self.loyalty = loy_to_bool(loyalty)
         self.order = order
-    
-        
+            
     def receive(self, ls, sender, order, m):
         LOG.debug("SENDER = {}, TARGET = {}, order = {}, m ={}".format(sender, self.ID, order, m))
         if m > 0:
@@ -95,9 +83,9 @@ class General(object):
                 new_sender.append(self.ID)
             self.orders.append((new_sender, order))
             
-            for m in xrange(m):
-                self.relay(ls, new_sender, order, m) 
-        else:
+            new_ls = [x for x in ls if (x != self) and (x.ID != sender[-1])] 
+            self.relay(new_ls, new_sender, order, m - 1) 
+        elif m == 0:
             self.orders.append((sender,order))
         return
         
@@ -107,61 +95,48 @@ class General(object):
                 if self.loyalty:
                     ls[i].receive(ls, sender, order, m)
                 elif (ls[i].ID % 2):
-                    ls[i].receive(ls, sender, flip(order), m)
-                else:
                     ls[i].receive(ls, sender, order, m)
-
-# def run(m, ls):
-#     for _ in xrange(m-1, -1, -1):
-#         for l in ls:
-#             for msg in l.orders:
-#                 l.receive(ls, msg[0], msg[1], m)
-                
-                #l.relay(ls, msg[0].append(l.ID), msg[1], m)
+                else:
+                    ls[i].receive(ls, sender, flip(order), m)
     
 def run(m, ls):
-    for _ in xrange(m, -1, -1):
-        for l in ls:  
-            l.receive(ls, [0], l.order, m)
-            
-                
+    for l in ls:  
+        l.receive(ls, [0], l.order, m)
+
     return ls
 
 def complete(m, ls):
     for i in xrange(len(ls)):
         condensed = condense(ls[i].orders, m)
-        print condensed
         msgs = sorted(condensed, key=lambda x: x[0][1])
         i_decisions = [msg[1] for msg in msgs]
+        
         decisions = [int_to_order(dc) for dc in i_decisions]
-        print decisions
-        print decisions[i] + ' ' + ''.join(decisions[:i]) + ' ' + ''.join(decisions[i+1:]) + ' ' + majority(i_decisions)
+        print int_to_order(ls[i].order) + ' ' + ''.join(decisions[:i]) + ' ' \
+            + ''.join(decisions[i+1:]) + ' ' + majority(i_decisions)
     print
     return
         
 def spawn(L_loyalties, loyalty, m, order):
     ret = []
     for i in xrange(len(L_loyalties)):
-        if loyalty == 'L':
-            ret.append(General(m, L_loyalties[i], order_to_int(order), i+1))
-        elif ((i % 2) == 0):
-            ret.append(General(m, L_loyalties[i], 1, i+1))
+        if loyalty:
+            ret.append(General(m, L_loyalties[i], order, i+1))
+        elif ((i+1) % 2):
+            ret.append(General(m, L_loyalties[i], order, i+1))
         else:
-            ret.append(General(m, L_loyalties[i], -1, i+1))
+            ret.append(General(m, L_loyalties[i], flip(order), i+1))
     return ret
 
 def main(m, loyalties, order):
     i_order = order_to_int(order)
     loy = loy_to_bool(loyalties[0])
-    
     ls = spawn(loyalties[1:], loy, m, i_order)
-    print len(ls)
-
     run(m, ls)   
     complete(m, ls)
     
 if __name__ == '__main__':
-    for line in open(argv[1]):
+    for line in fileinput.input():
         str_m, str_loyalties, _order = line.strip('\n').split(" ")
         if((str_loyalties == _order) and _order == "END"):
             pass
