@@ -1,0 +1,15 @@
+  0:    -> P1  PROPOSE v=42
+  1: P1 -> A1  PREPARE n=1
+  2: P1 -> A2  PREPARE n=1
+  3: P1 -> A3  PREPARE n=1
+  4: A1 -> P1  PROMISE n=1 (Prior: None)
+  5: A2 -> P1  PROMISE n=1 (Prior: None)
+  6: A3 -> P1  PROMISE n=1 (Prior: None)
+  7: P1 -> A1  ACCEPT n=1 v=42
+  8: P1 -> A2  ACCEPT n=1 v=42
+  9: P1 -> A3  ACCEPT n=1 v=42
+ 10: A1 -> P1  ACCEPTED n=1 v=42
+ 11: A2 -> P1  ACCEPTED n=1 v=42
+ 12: A3 -> P1  ACCEPTED n=1 v=42
+
+P1 has reached consensus (proposed 42, accepted 42)

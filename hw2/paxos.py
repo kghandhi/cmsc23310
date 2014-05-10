@@ -1,0 +1,27 @@
+proposal_id = 0
+
+class Message(object):
+    def __init__(self, value, typ, src, dst, ID):
+        self.value = value #thing
+        self.typ = typ #string PROPOSE, PREPARE, PROMISE, ACCEPT, ACCEPTED, REJECTED
+        self.src = src #list, make sure this isnt a list and can reference an actual computer
+        self.dst = dst #possibly will be like p_1 should change somehow
+        self.ID = ID #if not a proposal should this ID be negative?
+
+def Queue_Message(N, m):
+    N.append(m)
+
+#possibly also should be part of a computer 
+def Extract_Message(N): 
+#finds the first message m in the queue st m.src.failed 
+    for message in N:
+        if (message.src.failed = False) and (message.dst.failed = False):
+            msg = message
+            N.remove(msg)
+            return msg
+        else:
+            return 0 #consider creating a length of message function 
+
+#should be in the definition of the acceptor or the proposer, 
+#but maybe not because it takes a computer            
+def Deliver_Message(src_p, msg):

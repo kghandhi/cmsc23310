@@ -1,0 +1,40 @@
+  0: ** A4 FAILS **
+  0: ** A5 FAILS **
+  0:    -> P1  PROPOSE v=42
+  1: P1 -> A1  PREPARE n=1
+  2: P1 -> A2  PREPARE n=1
+  3: P1 -> A3  PREPARE n=1
+  4: A1 -> P1  PROMISE n=1 (Prior: None)
+  5: A2 -> P1  PROMISE n=1 (Prior: None)
+  6: A3 -> P1  PROMISE n=1 (Prior: None)
+  7: P1 -> A1  ACCEPT n=1 v=42
+  8: P1 -> A2  ACCEPT n=1 v=42
+  9: P1 -> A3  ACCEPT n=1 v=42
+ 10: ** P1 FAILS **
+ 10: ** A1 FAILS **
+ 10: ** A2 FAILS **
+ 10: ** A4 RECOVERS **
+ 10: ** A5 RECOVERS **
+ 11:
+ 12:
+ 13:    -> P2  PROPOSE v=0
+ 14: P2 -> A3  PREPARE n=2
+ 15: P2 -> A4  PREPARE n=2
+ 16: P2 -> A5  PREPARE n=2
+ 17: A3 -> P2  PROMISE n=2 (Prior: n=1, v=42)
+ 18: A4 -> P2  PROMISE n=2 (Prior: None)
+ 19: A5 -> P2  PROMISE n=2 (Prior: None)
+ 20: P2 -> A3  ACCEPT n=2 v=42
+ 21: P2 -> A4  ACCEPT n=2 v=42
+ 22: P2 -> A5  ACCEPT n=2 v=42
+ 23: A3 -> P2  ACCEPTED n=2 v=42
+ 24: A4 -> P2  ACCEPTED n=2 v=42
+ 25: A5 -> P2  ACCEPTED n=2 v=42
+ 26:
+ 27:
+ 28:
+ 29:
+ 30:
+
+P1 did not reach consensus
+P2 has reached consensus (proposed 0, accepted 42)
