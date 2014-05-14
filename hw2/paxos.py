@@ -9,7 +9,6 @@ class EqualityMixin(object):
                 return False
         return True
 
-
 class Message(EqualityMixin):
     def __init__(self, value, typ, src, dst, n, prior_proposal):
         self.value = value #thing
@@ -17,7 +16,7 @@ class Message(EqualityMixin):
         self.src = src #tuple (P or A, ID)
         self.dst = dst #tuple (P or A, ID)
         self.n = n #proposal_id
-        self.prior_proposal = prior_proposal #list containing nothing or a value and p_id
+        self.prior_proposal = prior_proposal #list containing nothing or a (value, p_id) tuple
 
     def __repr__(self):
         FMT = "Message(value={}, typ={}, src={}, dst={}, n={}, prior_proposal={})"

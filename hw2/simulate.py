@@ -15,6 +15,24 @@ class Event(paxos.EqualityMixin):
         FMT = "Event(t={}, F={}, R={}, pi_c={}, pi_v={})"
         return FMT.format(self.t, self.F, self.R, self.pi_c, self.pi_v)
 
+def print_msg(msg): #this is stupid, do it better.
+    ret = ""
+    if msg.typ == "PROPOSE":
+        ret += "    -> P%d  PROPOSE v=%d" %(msg.dst[1], msg.value)
+    elif msg.typ == "PREPARE":
+        ret += " P%d -> A%d  PREPARE n=%d" %(msg.src[1], msg.dst[1], msg.n)
+    elif msg.typ == "PROMISE":
+        if len(msg.prior_proposal):
+            prop_s = "n={}, v={}".format(msg.prior_proposal[0][1], msg.prior_proposal[0][0])
+        else:
+            prop_s = "None"
+        ret += " A%d -> P%d  PROMISE n=%d (Prior: %s)" %(msg.src[1], msg.dst[1], msg.n, prop_s)
+    elif msg.typ == "ACCEPT":
+        ret += 
+    elif msg.typ == "ACCEPTED":
+    elif msg.typ == "REJECTED":
+    return ret
+    
 def simulate(n_p, n_a, t_max, E):
     props = [] #static list of proposers (access proposer i by doing props[i-1]
     accs = [] #static list of acceptors (access acceptor i by doing accs[i-1]
@@ -29,6 +47,7 @@ def simulate(n_p, n_a, t_max, E):
     for i in xrange(t_max):
         to_print = "%d: " %i
         if (len(N) == 0) and (len(E) == 0):
+            print to_print
             return
         if i in E:
             e = E[i]
@@ -38,21 +57,21 @@ def simulate(n_p, n_a, t_max, E):
             del E[i]
             for p_id in e.F['P']:
                 props[p_id - 1].failed = True
-                print to_print ^ "** P %d FAILS **" %p_id
+                to_print += "** P %d FAILS **" %p_id
             for a_id in e.F['A']:
                 accs[a_id - 1].failed = True
-                print to_print ^ ("** A %d FAILS **" %a_id)
+                to_print += ("** A %d FAILS **" %a_id)
             for p_id in e.R['P']:
                 props[p_id - 1].failed = False
-                print to_print ^ "** P %d RECOVERS **" %p_id
+                to_print += "** P %d RECOVERS **" %p_id
             for a_id in e.R['A']:
                 accs[a_id - 1].failed = False 
-                print to_print ^ "%d ** A %d RECOVERS **" %(i, a_id)
+                to_print += "%d ** A %d RECOVERS **" %(i, a_id)
            
             if (len(e.pi_c) != 0) and (len(e.pi_v) != 0): #pi_c = proposer, pi_v = value proposed
                 msg = paxos.Message(e.pi_v[0], "PROPOSE", [], ('P',e.pi_c[0]), paxos.proposal_id, [])
                 props[e.pi_c[0] - 1].deliver_message(N, msg)
-                print to_print ^ "  -> P%d" %(e_pi_c[0]) 
+                to_print += print_msg(msg)
             else:
                 msg = paxos.extract_message(N, accs, props)
                 if msg != 0: #resolve!
@@ -61,6 +80,7 @@ def simulate(n_p, n_a, t_max, E):
                     else:
                         c = props[msg.dst[1]-1]
                     c.deliver_message(N, msg) #who do i deliver message to???
+                    to_print += print_msg(msg)
                     
         else:
             msg = paxos.extract_message(N, accs, props)
@@ -70,9 +90,11 @@ def simulate(n_p, n_a, t_max, E):
                 else:
                     c = props[msg.dst[1]-1]
                 c.deliver_message(N, msg)
-               
+                to_print += print_msg(msg)
+        print to_print
              
 def main(n_p, n_a, t_max, E):
+    print E
     simulate(n_p, n_a, t_max, E)
 
 def proc_input(file_handle):    
