@@ -91,9 +91,9 @@ class Proposer(object):
             proposal_id += 1 #this could be very very wrong
         
         elif msg.typ == "PROMISE":
-            if msg.prior_proposal and (msg.n > msg.prior_proposal[1]):
-                self.promises[msg.n].append((msg.value, msg.n))
-            elif (msg.prior_proposal):
+            #if msg.prior_proposal and (msg.n > msg.prior_proposal[1]):
+             #   self.promises[msg.n].append((msg.value, msg.n))
+            if (msg.prior_proposal):
                 self.promises[msg.n].append(msg.prior_proposal)
             else:
                 self.promises[msg.n].append((msg.value, msg.n))
@@ -156,7 +156,7 @@ class Acceptor(object):
                 new_msg = Message(msg.value, "REJECTED", ('A',self.ID), msg.src, msg.n, None)
             queue_message(N, new_msg)
 
-        elif msg.typ == "ACCEPT":ff
+        elif msg.typ == "ACCEPT":
             if self.n_int <= msg.n:
                 new_msg = Message(msg.value, "ACCEPTED", ('A',self.ID), msg.src, msg.n, None)
                 self.accs.append((msg.value, msg.n))
