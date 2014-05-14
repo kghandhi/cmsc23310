@@ -1,3 +1,7 @@
+from sys import argv
+import logging
+import paxos
+import fileinput
 
 class Event(object):
     def __init__(self, t, F, R, pi_c, pi_v):
@@ -7,12 +11,23 @@ class Event(object):
         self.pi_c = pi_c #proposer ID proposing something    these are lists
         self.pi_v = pi_v #value proposer proposes. both this and pi_v should be null if either is
 
+    def __eq__(self, other):
+        for key, value in self.__dict__.items():
+            if other.__dict__[key] != value:
+                return False
+        return True
+
+
+    def __repr__(self):
+        FMT = "Event(t={}, F={}, R={}, pi_c={}, pi_v={})"
+        return FMT.format(self.t, self.F, self.R, self.pi_c, self.pi_v)
+
 def simulate(n_p, n_a, t_max, E):
     props = [] #static list of proposers (access proposer i by doing props[i-1]
     accs = [] #static list of acceptors (access acceptor i by doing accs[i-1]
     
     for j in xrange(n_a):
-        accs.append(Acceptor(j+1, ...))
+        accs.append(Acceptor(j+1))
     for i in xrange(n_p):
         props.append(Proposer(i+1, accs))
 
@@ -21,15 +36,12 @@ def simulate(n_p, n_a, t_max, E):
     for i in xrange(t_max):
         if (len(N) == 0) and (len(E) == 0):
             return
-        for event in E:
-            if event.t == i:
-                e = event
-        if len(e) != 0:
-            E.remove(e)
-            # for c in e.F: #F failed computers
-            #     c.failed = True #figure this out, should p_1 or a_1 refer to the object?
-            #  for c in e.R: #R revived computers
-            #     c.failed = False
+        if i in E:
+            e = E[i]
+        else:
+            e = 0
+        if e != 0:
+            del E[i]
             for p_id in e.F['P']:
                 props[p_id - 1].failed = True
             for a_id in e.F['A']:
@@ -40,63 +52,65 @@ def simulate(n_p, n_a, t_max, E):
                 accs[a_id - 1].failed = False 
            
             if (len(e.pi_c) != 0) and (len(e.pi_v) != 0): #pi_c = proposer, pi_v = value proposed
-                msg = Message(e.pi_v[0], "PROPOSE", [], e.pi_c[0])
-                Deliver_Message(e.pi_c[0], msg)
+                msg = Message(e.pi_v[0], "PROPOSE", [], e.pi_c[0], proposal_id, [])
+                props[e.pi_c - 1].deliver_message(e.pi_c[0], msg)
             else:
-                msg = Extract_Message(N)
+                msg = extract_message(N)
                 if msg != 0: #resolve!
-                    Deliver_Message(msg.dst, msg)
+                    deliver_message(msg.dst, msg) #who do i deliver message to???
         else:
-            msg = Extract_Message(N):
+            msg = extract_message(N)
             if msg != 0: #resolve!
-                Deliver_Message(msg.dst, msg)
+                deliver_message(msg.dst, msg)
                
              
 def main(n_p, n_a, t_max, E):
     simulate(n_p, n_a, t_max, E)
-    
+
+def proc_input(file_handle):    
+    E = {}
+    for l in file_handle:
+        line = l.strip('\n').split(" ")
+        if (len(line) == 2) and (line[1] == "END"): 
+           break
+        if (len(line) == 3):
+            n_p, n_a, t_max_s = line
+        elif (len(line) == 4):
+            key = int(line[0])
+            
+            if key in E:
+                e = E[key]
+                if line[1] == "FAIL":
+                    e.F[line[2][0]].append(int(line[3]))
+                elif line[1] == "RECOVER":
+                    e.R[line[2][0]].append(int(line[3]))
+                elif line[1] == "PROPOSE":
+                    e.pi_c.append(int(line[2]))
+                    e.pi_v.append(int(line[3]))
+                else: 
+                    print "INVALID INPUT"
+            else:
+                F = {'P': [], 'A': []}
+                R = {'P': [], 'A': []}
+                pi_c = []
+                pi_v = []
+                if line[1] == "FAIL":
+                    F[line[2][0]].append(int(line[3]))
+                elif line[1] == "RECOVER":
+                    R[line[2][0]].append(int(line[3]))
+                elif line[1] == "PROPOSE":
+                    pi_c.append(int(line[2]))
+                    pi_v.append(int(line[3]))
+                else: 
+                    print "INVALID INPUT"
+                E[key] = Event(key, F, R, pi_c, pi_v)
+    return int(n_p), int(n_a), int(t_max_s), E
+
+
 if __name__ == '__main__':
-    E = []
-    t_max = int(t_max_s)
-    ev_dic = {}
-    #i think id need to reverse these loops
-        
-        for l in fileinput.input():
-            line = l.strip('\n').split(" ")
-            if (len(line) == 2) and (line[1] == "END"): 
-                #order ev_dic by key then put in E
-                break
-            if (len(line) == 3):
-                n_p, n_a, t_max_s = line
-            elif (len(line) == 4):
-                if line[0] in ev_dic:
-                    e = ev_dic[line[0]] 
-                    if line[1] == "FAIL":
-                        e.F[line[2][0]].append(line[3])
-                    elif line[1] == "RECOVER":
-                        e.R[line[2][0]].append(line[3])
-                    elif line[1] == "PROPOSE":
-                        e.pi_c.append(line[2])
-                        e.pi_v.append(line[3])
-                    else: 
-                        print "INVALID INPUT"
-                else:
-                    F = {'P': [], 'A': []}
-                    R = {'P': [], 'A': []}
-                    pi_c = []
-                    pi_v = []
-                    if line[1] == "FAIL":
-                        F[line[2][0]].append(line[3])
-                    elif line[1] == "RECOVER":
-                        R[line[2][0]].append(line[3])
-                    elif line[1] == "PROPOSE":
-                        pi_c.append(line[2])
-                        pi_v.append(line[3])
-                    else: 
-                        print "INVALID INPUT"
-                    ev_dic[line[0]] = Event(line[0], F, R, pi_c, pi_v)
+    n_p, n_a, t_max_s, E = proc_input(fileinput.input())
                     
-    main(int(n_p), int(n_a), t_max, E)
+    main(n_p, n_a, t_max_s, E)
                 
            
                 
