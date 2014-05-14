@@ -36,7 +36,7 @@ class TestAcceptor(unittest.TestCase):
         }
             
 
-        self.acceptor = paxos.Acceptor(1)
+        self.acceptor = paxos.Acceptor(3)
         self.N = []
 
     def test_prepare_promise(self):

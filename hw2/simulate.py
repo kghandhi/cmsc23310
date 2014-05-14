@@ -20,13 +20,14 @@ def simulate(n_p, n_a, t_max, E):
     accs = [] #static list of acceptors (access acceptor i by doing accs[i-1]
     
     for j in xrange(n_a):
-        accs.append(Acceptor(j+1))
+        accs.append(paxos.Acceptor(j+1))
     for i in xrange(n_p):
-        props.append(Proposer(i+1, accs))
+        props.append(paxos.Proposer(i+1, accs))
 
     N = [] #empty network? should it be a set? this is a queue of messages, will change
 
     for i in xrange(t_max):
+        to_print = "%d: " %i
         if (len(N) == 0) and (len(E) == 0):
             return
         if i in E:
@@ -37,24 +38,38 @@ def simulate(n_p, n_a, t_max, E):
             del E[i]
             for p_id in e.F['P']:
                 props[p_id - 1].failed = True
+                print to_print ^ "** P %d FAILS **" %p_id
             for a_id in e.F['A']:
                 accs[a_id - 1].failed = True
+                print to_print ^ ("** A %d FAILS **" %a_id)
             for p_id in e.R['P']:
                 props[p_id - 1].failed = False
+                print to_print ^ "** P %d RECOVERS **" %p_id
             for a_id in e.R['A']:
                 accs[a_id - 1].failed = False 
+                print to_print ^ "%d ** A %d RECOVERS **" %(i, a_id)
            
             if (len(e.pi_c) != 0) and (len(e.pi_v) != 0): #pi_c = proposer, pi_v = value proposed
-                msg = Message(e.pi_v[0], "PROPOSE", [], e.pi_c[0], proposal_id, [])
-                props[e.pi_c - 1].deliver_message(e.pi_c[0], msg)
+                msg = paxos.Message(e.pi_v[0], "PROPOSE", [], ('P',e.pi_c[0]), paxos.proposal_id, [])
+                props[e.pi_c[0] - 1].deliver_message(N, msg)
+                print to_print ^ "  -> P%d" %(e_pi_c[0]) 
             else:
-                msg = extract_message(N)
+                msg = paxos.extract_message(N, accs, props)
                 if msg != 0: #resolve!
-                    deliver_message(msg.dst, msg) #who do i deliver message to???
+                    if msg.dst[0] == 'A':
+                        c = accs[msg.dst[1]-1]
+                    else:
+                        c = props[msg.dst[1]-1]
+                    c.deliver_message(N, msg) #who do i deliver message to???
+                    
         else:
-            msg = extract_message(N)
+            msg = paxos.extract_message(N, accs, props)
             if msg != 0: #resolve!
-                deliver_message(msg.dst, msg)
+                if msg.dst[0] == 'A':
+                    c = accs[msg.dst[1]-1]
+                else:
+                    c = props[msg.dst[1]-1]
+                c.deliver_message(N, msg)
                
              
 def main(n_p, n_a, t_max, E):
