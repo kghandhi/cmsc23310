@@ -3,20 +3,13 @@ import logging
 import paxos
 import fileinput
 
-class Event(object):
+class Event(paxos.EqualityMixin):
     def __init__(self, t, F, R, pi_c, pi_v):
         self.t = t
         self.F = F #dictionary of computers who fail       
         self.R = R #dictionary of computers who recover         
         self.pi_c = pi_c #proposer ID proposing something    these are lists
         self.pi_v = pi_v #value proposer proposes. both this and pi_v should be null if either is
-
-    def __eq__(self, other):
-        for key, value in self.__dict__.items():
-            if other.__dict__[key] != value:
-                return False
-        return True
-
 
     def __repr__(self):
         FMT = "Event(t={}, F={}, R={}, pi_c={}, pi_v={})"

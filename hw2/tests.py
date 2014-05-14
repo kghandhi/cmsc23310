@@ -1,6 +1,7 @@
 import unittest 
 
 import simulate
+import paxos
 
 class TestSimulateStaticFunctions(unittest.TestCase):
     TEST_BASE_PATH = "./tests/{}"
@@ -23,6 +24,48 @@ class TestSimulateStaticFunctions(unittest.TestCase):
     def test_proc_input_simple(self):
         for path in [self.SIMPLE_TEST, self.UNCLEAN_TEST]:
             self._test_proc_input_simple(path)
+
+class TestAcceptor(unittest.TestCase):
+    def _make_simple_message(self, msg_type): 
+        return paxos.Message(0, msg_type, 1, 3, 0, []) 
+
+    def setUp(self):
+        self.messages = {
+            key: self._make_simple_message(key) for key in
+            ["PREPARE", "ACCEPT"]
+        }
+            
+
+        self.acceptor = paxos.Acceptor(1)
+        self.N = []
+
+    def test_prepare_promise(self):
+        self.acceptor.deliver_message(self.N, self.messages["PREPARE"])
+
+        print "got: {}".format(self.N)
+
+        self.assertEqual(len(self.N), 1)
+        self.assertEqual(self.N[0], paxos.Message(0, "PROMISE", 3, 1, 0, []))
+
+    def test_prepare_rejected(self):
+        self.acceptor.n = 1
+
+        self.acceptor.deliver_message(self.N, self.messages["PREPARE"])
+        
+        self.assertEqual(len(self.N), 1)
+        self.assertEqual(self.N[0], self._make_simple_message("REJECTED"))
+
+class TestProposer(unittest.TestCase):
+    PROPOSE_MESSAGE = paxos.Message(0, "PROPOSE", [], [], 0, [])
+
+    def setUp(self):
+        self.proposer = paxos.Proposer(0, 
+                                       [paxos.Acceptor(1),
+                                        paxos.Acceptor(2)])
+        self.N = []
+
+    def test_propose_message(self):
+        pass
 
 
 
