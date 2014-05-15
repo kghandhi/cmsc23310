@@ -34,7 +34,7 @@ def simulate(n_p, n_a, t_max, E):
     N = [] #empty network? should it be a set? this is a queue of messages, will change
 
     for i in xrange(t_max+1):
-       
+        print_dummy = False
         to_print = "%d: " %i
         if (len(N) == 0) and (len(E) == 0):
             results(props)
@@ -47,21 +47,26 @@ def simulate(n_p, n_a, t_max, E):
             del E[i]
             for p_id in e.F['P']:
                 props[p_id - 1].failed = True
+                print_dummy = True
                 print to_print + "** P{} FAILS **".format(p_id)
             for a_id in e.F['A']:
                 accs[a_id - 1].failed = True
+                print_dummy = True
                 print to_print + "** A{} FAILS **".format(a_id)
             for p_id in e.R['P']:
                 props[p_id - 1].failed = False
+                print_dummy = True
                 print to_print + "** P{} RECOVERS **".format(p_id)
             for a_id in e.R['A']:
                 accs[a_id - 1].failed = False 
+                print_dummy = True
                 print to_print + "** A{} RECOVERS **".format(a_id)
                
             if (len(e.pi_c) != 0) and (len(e.pi_v) != 0): #pi_c = proposer, pi_v = value proposed
                 msg = paxos.Message(e.pi_v[0], "PROPOSE", [], ('P',e.pi_c[0]), paxos.proposal_id, None)
                 props[e.pi_c[0] - 1].deliver_message(N, msg)
-                to_print += msg.print_msg()
+                print_dummy = True
+                print to_print + msg.print_msg()
             else:
                 msg = paxos.extract_message(N, accs, props)
                 if msg != 0: #resolve!
@@ -70,7 +75,8 @@ def simulate(n_p, n_a, t_max, E):
                     else:
                         c = props[msg.dst[1]-1]
                     c.deliver_message(N, msg) #who do i deliver message to???
-                    to_print += msg.print_msg()
+                    print_dummy = True
+                    print to_print + msg.print_msg()
                     
         else:
             msg = paxos.extract_message(N, accs, props)
@@ -80,8 +86,10 @@ def simulate(n_p, n_a, t_max, E):
                 else:
                     c = props[msg.dst[1]-1]
                 c.deliver_message(N, msg)
-                to_print += msg.print_msg()
-        print to_print
+                print_dummy = True
+                print to_print + msg.print_msg()
+        if not print_dummy:
+            print to_print
     results(props)
     return
     
