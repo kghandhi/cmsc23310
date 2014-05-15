@@ -11,19 +11,19 @@ class EqualityMixin(object):
 
 class Message(EqualityMixin):
     def __init__(self, value, typ, src, dst, n, prior_proposal):
-        self.value = value #thing
+        self.value = value 
         self.typ = typ #string PROPOSE, PREPARE, PROMISE, ACCEPT, ACCEPTED, REJECTED
         self.src = src #tuple (P or A, ID)
         self.dst = dst #tuple (P or A, ID)
         self.n = n #proposal_id
-        self.prior_proposal = prior_proposal #list containing nothing or a (value, p_id) tuple (NOT IN A LIST) or None?
+        self.prior_proposal = prior_proposal #the highest numbered prior proposal (val,n) or None
 
     def __repr__(self):
         FMT = "Message(value={}, typ={}, src={}, dst={}, n={}, prior_proposal={})"
         
         return FMT.format(self.value, self.typ, self.src, self.dst, 
                           self.n, self.prior_proposal)
-    def print_msg(self): #this is stupid, do it better.
+    def print_msg(self):
         ret = ""
         if self.typ == "PROPOSE":
             ret += "    -> P%d  PROPOSE v=%d" %(self.dst[1], self.value)
@@ -88,10 +88,12 @@ class Proposer(object):
                 new_msg = Message(msg.value, "PREPARE", ('P',self.ID), ('A',c_a.ID), proposal_id, None)
                 queue_message(N, new_msg)
             self.promises[proposal_id] = []
-            proposal_id += 1 #this could be very very wrong
+            proposal_id += 1 
         
         elif msg.typ == "PROMISE":
-            if (msg.prior_proposal): #and (msg.n < msg.prior_proposal[1]):
+            if msg.n not in self.promises:
+                self.promises[msg.n] = []
+            if (msg.prior_proposal): 
                 self.promises[msg.n].append(msg.prior_proposal)
             else:
                 self.promises[msg.n].append((msg.value, msg.n))
@@ -109,9 +111,12 @@ class Proposer(object):
             else:
                 self.rejects[msg.n] = [(msg.value, msg.n)]
             if (len(self.rejects[msg.n]) == self.majority):
+                if proposal_id not in self.proposals:
+                    self.proposals[proposal_id] = msg.value
                 for c_a in self.accs:
                     new_msg = Message(msg.value, "PREPARE", ('P',self.ID), ('A',c_a.ID),  proposal_id, None)
                     queue_message(N, new_msg)
+                self.promises[proposal_id] = []
                 proposal_id += 1
         
         elif msg.typ == "ACCEPTED":
@@ -122,11 +127,6 @@ class Proposer(object):
             if (len(self.accepts[msg.n]) == self.majority):
                 if msg.n not in self.props_accepted:
                     self.props_accepted[msg.n] = (self.proposals[msg.n] , msg.value)
-            # elif (len(self.rejects[msg.n]) == self.majority): 
-            #     for c_a in self.accs:
-            #         new_msg = Message(msg.value, "PREPARE", self.ID, c_a.ID, proposal_id, [])
-            #         queue_message(N, new_msg)
-            #     proposal_id +=1
         else:
             print "This is not a type of message a Proposer should be receiving"
             
@@ -135,28 +135,26 @@ class Acceptor(object):
     def __init__(self, ID):
         self.ID = ID
         self.failed = False
-        self.n_int = 0 #initialize the highest prepare request it has responded to?
-        self.accs = [] #list of tuples values accepted (value, n)
+        self.n_int = 0 #the highest prepare request it has responded to
+        self.accs = [] #list of tuples values accepted (value, n) 
 
     def deliver_message(self, N, msg):
         if msg.typ == "PREPARE":
-            if msg.n > self.n_int:
+            if msg.n >= self.n_int:
                 if len(self.accs): 
-                    # tups = [(x[0], x.n) for x in self.accs]
-                    high_p = sorted(self.accs, key=lambda x: x[1])[0]
-                    self.n_int = max(high_p[1], msg.n)
+                    high_p = sorted(self.accs, key=lambda x: x[1])[-1]
+                    self.n_int = high_p[1]
                 else:
                     high_p = None
                     self.n_int = msg.n
                 new_msg = Message(msg.value, "PROMISE", ('A',self.ID), msg.src, msg.n, high_p)
-            # else:
-            #     new_msg = Message(msg.value, "REJECTED", ('A',self.ID), msg.src, msg.n, None)
                 queue_message(N, new_msg)
 
         elif msg.typ == "ACCEPT":
+            
             if self.n_int <= msg.n:
                 new_msg = Message(msg.value, "ACCEPTED", ('A',self.ID), msg.src, msg.n, None)
-                self.accs.append((msg.value, msg.n))
+                self.accs.append((msg.value, msg.n)) 
             else:
                 new_msg = Message(msg.value, "REJECTED", ('A',self.ID), msg.src, msg.n, None)
             queue_message(N, new_msg)

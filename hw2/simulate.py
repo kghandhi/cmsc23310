@@ -21,6 +21,8 @@ def results(props):
             for key in proposer.props_accepted:
                 tup = proposer.props_accepted[key] 
                 print "P%d has reached consensus (proposed %d, accepted %d)" %(proposer.ID, tup[0], tup[1])
+        else:
+            print "P%d did not reach consensus" % proposer.ID
     
 def simulate(n_p, n_a, t_max, E):
     props = [] #static list of proposers (access proposer i by doing props[i-1]
@@ -62,25 +64,25 @@ def simulate(n_p, n_a, t_max, E):
                 print_dummy = True
                 print to_print + "** A{} RECOVERS **".format(a_id)
                
-            if (len(e.pi_c) != 0) and (len(e.pi_v) != 0): #pi_c = proposer, pi_v = value proposed
+            if (len(e.pi_c) != 0) and (len(e.pi_v) != 0): 
                 msg = paxos.Message(e.pi_v[0], "PROPOSE", [], ('P',e.pi_c[0]), paxos.proposal_id, None)
                 props[e.pi_c[0] - 1].deliver_message(N, msg)
                 print_dummy = True
                 print to_print + msg.print_msg()
             else:
                 msg = paxos.extract_message(N, accs, props)
-                if msg != 0: #resolve!
+                if msg != 0: 
                     if msg.dst[0] == 'A':
                         c = accs[msg.dst[1]-1]
                     else:
                         c = props[msg.dst[1]-1]
-                    c.deliver_message(N, msg) #who do i deliver message to???
+                    c.deliver_message(N, msg) 
                     print_dummy = True
                     print to_print + msg.print_msg()
                     
         else:
             msg = paxos.extract_message(N, accs, props)
-            if msg != 0: #resolve!
+            if msg != 0: 
                 if msg.dst[0] == 'A':
                     c = accs[msg.dst[1]-1]
                 else:
@@ -95,8 +97,6 @@ def simulate(n_p, n_a, t_max, E):
     
              
 def main(n_p, n_a, t_max, E):
-    print "(n_p=%d, n_a=%d, t_max=%d,E)" %(n_p, n_a, t_max)
-    print E
     simulate(n_p, n_a, t_max, E)
 
 def proc_input(file_handle):    

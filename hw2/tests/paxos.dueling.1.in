@@ -1,7 +1,3 @@
-# Two proposers duel until one of them (P2) is alive long enough
-# to achieve consensus. Ultimately, P1 must accept the value
-# proposed by P2.
- 
 2 3 130
 0 PROPOSE 1 42
 7 FAIL PROPOSER 1
