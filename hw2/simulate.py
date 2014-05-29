@@ -1,5 +1,4 @@
 from sys import argv
-import logging
 import paxos
 import fileinput
 
@@ -8,21 +7,24 @@ class Event(paxos.EqualityMixin):
         self.t = t
         self.F = F #dictionary of computers who fail       
         self.R = R #dictionary of computers who recover         
-        self.pi_c = pi_c #proposer ID proposing something    these are lists
-        self.pi_v = pi_v #value proposer proposes. both this and pi_v should be null if either is
+        self.pi_c = pi_c #proposer ID proposing. either [] or [pi_c]
+        self.pi_v = pi_v #value to propose. either [] or [pi_v]
 
     def __repr__(self):
-        FMT = "Event(t={}, F={}, R={}, pi_c={}, pi_v={})"
-        return FMT.format(self.t, self.F, self.R, self.pi_c, self.pi_v)
+        fmt = "Event(t={}, F={}, R={}, pi_c={}, pi_v={})"
+        return fmt.format(self.t, self.F, self.R, self.pi_c, self.pi_v)
 
 def results(props):
+    print 
+    print 
     for proposer in props:
         if len(proposer.props_accepted):
             for key in proposer.props_accepted:
                 tup = proposer.props_accepted[key] 
-                print "P%d has reached consensus (proposed %d, accepted %d)" %(proposer.ID, tup[0], tup[1])
+                print "P{} has reached consensus (proposed {}, accepted {})" \
+                .format(proposer.ID, tup[0], tup[1])
         else:
-            print "P%d did not reach consensus" % proposer.ID
+            print "P{} did not reach consensus".format(proposer.ID)
     
 def simulate(n_p, n_a, t_max, E):
     props = [] #static list of proposers (access proposer i by doing props[i-1]
@@ -33,11 +35,12 @@ def simulate(n_p, n_a, t_max, E):
     for i in xrange(n_p):
         props.append(paxos.Proposer(i+1, accs))
 
-    N = [] #empty network? should it be a set? this is a queue of messages, will change
+    N = [] #empty network
 
     for i in xrange(t_max+1):
-        print_dummy = False
+        print_dummy = False #sorry
         to_print = "%d: " %i
+
         if (len(N) == 0) and (len(E) == 0):
             results(props)
             return
@@ -65,7 +68,8 @@ def simulate(n_p, n_a, t_max, E):
                 print to_print + "** A{} RECOVERS **".format(a_id)
                
             if (len(e.pi_c) != 0) and (len(e.pi_v) != 0): 
-                msg = paxos.Message(e.pi_v[0], "PROPOSE", [], ('P',e.pi_c[0]), paxos.proposal_id, None)
+                msg = paxos.Message(e.pi_v[0], "PROPOSE", [], \
+                                    ('P', e.pi_c[0]), paxos.proposal_id, None)
                 props[e.pi_c[0] - 1].deliver_message(N, msg)
                 print_dummy = True
                 print to_print + msg.print_msg()
@@ -99,15 +103,17 @@ def simulate(n_p, n_a, t_max, E):
 def main(n_p, n_a, t_max, E):
     simulate(n_p, n_a, t_max, E)
 
+#the complication of reading in a file. It will not work always with comments
+#at the top! But it will work if the comments arent 2,3,or4 strings
 def proc_input(file_handle):    
     E = {}
     for l in file_handle:
         line = l.strip('\n').split(" ")
         if (len(line) == 2) and (line[1] == "END"): 
-           break
-        if (len(line) == 3):
+            break
+        if len(line) == 3:
             n_p, n_a, t_max_s = line
-        elif (len(line) == 4):
+        elif len(line) == 4:
             key = int(line[0])
             
             if key in E:
