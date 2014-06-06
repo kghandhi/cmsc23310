@@ -1,5 +1,5 @@
 from sys import argv
-import paxos
+import paxosNEW as paxos
 import fileinput
 
 class Event(paxos.EqualityMixin):
@@ -68,7 +68,7 @@ def simulate(n_p, n_a, t_max, E):
                 print to_print + "** A{} RECOVERS **".format(a_id)
                
             if (len(e.pi_c) != 0) and (len(e.pi_v) != 0): 
-                msg = paxos.Message(e.pi_v[0], "PROPOSE", [], \
+                msg = paxos.Message(e.pi_v[0], "ELECTION_ID","PROPOSE", [], \
                                     ('P', e.pi_c[0]), paxos.proposal_id, None)
                 props[e.pi_c[0] - 1].deliver_message(N, msg)
                 print_dummy = True
