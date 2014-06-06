@@ -1,5 +1,15 @@
 # Simple example where nothing goes wrong.
 
-1 3 15
-0 PROPOSE 1 42
+3 3 35
+0 PROPOSE 1 2 ELECTION_ID
+5 PROPOSE 3 3 "4"
 0 END
+
+            if (len(e.pi_c) != 0) and (len(e.pi_v) != 0): 
+                msg = paxos.Message(e.pi_v[0], e.pi_v[1],"PROPOSE", [], \
+                                    ('P', e.pi_c[0]), paxos.proposal_id, None)
+                props[e.pi_c[0] - 1].deliver_message(N, msg)
+                print_dummy = True
+                print to_print + msg.print_msg()
+
+
