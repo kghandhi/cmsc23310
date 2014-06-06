@@ -68,7 +68,8 @@ def simulate(n_p, n_a, t_max, E):
                 print to_print + "** A{} RECOVERS **".format(a_id)
                
             if (len(e.pi_c) != 0) and (len(e.pi_v) != 0): 
-                msg = paxos.Message(e.pi_v[0], "ELECTION_ID","PROPOSE", [], \
+		print e.pi_v
+                msg = paxos.Message(e.pi_v[0], e.pi_v[1] ,"PROPOSE", [], \
                                     ('P', e.pi_c[0]), paxos.proposal_id, None)
                 props[e.pi_c[0] - 1].deliver_message(N, msg)
                 print_dummy = True
@@ -103,17 +104,17 @@ def simulate(n_p, n_a, t_max, E):
 def main(n_p, n_a, t_max, E):
     simulate(n_p, n_a, t_max, E)
 
-#the complication of reading in a file. It will not work always with comments
-#at the top! But it will work if the comments arent 2,3,or4 strings
 def proc_input(file_handle):    
     E = {}
     for l in file_handle:
         line = l.strip('\n').split(" ")
+	if (line[0] == "#"):
+	    continue
         if (len(line) == 2) and (line[1] == "END"): 
             break
         if len(line) == 3:
             n_p, n_a, t_max_s = line
-        elif len(line) == 4:
+        elif len(line) == 5:
             key = int(line[0])
             
             if key in E:
@@ -123,8 +124,12 @@ def proc_input(file_handle):
                 elif line[1] == "RECOVER":
                     e.R[line[2][0]].append(int(line[3]))
                 elif line[1] == "PROPOSE":
+		    print "PROPOSE",line
                     e.pi_c.append(int(line[2]))
                     e.pi_v.append(int(line[3]))
+		    e.pi_v.append((line[4]))
+		    print e.pi_v
+		    print "\n\n"
                 else: 
                     print "INVALID INPUT"
             else:
@@ -139,6 +144,7 @@ def proc_input(file_handle):
                 elif line[1] == "PROPOSE":
                     pi_c.append(int(line[2]))
                     pi_v.append(int(line[3]))
+		    pi_v.append(line[4])
                 else: 
                     print "INVALID INPUT"
                 E[key] = Event(key, F, R, pi_c, pi_v)

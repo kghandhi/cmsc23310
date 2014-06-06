@@ -24,7 +24,7 @@ JOIN_ID = "JOIN_ID"
 # + nodes names (for add join)
 
 #leader elections
-LEADER_LEASE_TIME = timedelta(seconds=10)
+LEADER_LEASE_TIME = timedelta(seconds=1)
 
 
 proposal_id = 1
@@ -39,7 +39,7 @@ class EqualityMixin(object):
 class Message(EqualityMixin):
     def __init__(self, value, key, typ, src, dst, n, prior_proposal):
         self.value = value 
-        self.key = key
+        self.key = key #election, actualKey, merge, split
         self.typ = typ #string PROPOSE, PREPARE, PROMISE, ACCEPT, ACCEPTED, REJECTED
         self.src = src #tuple (P or A, ID)
         self.dst = dst #tuple (P or A, ID)
@@ -57,21 +57,21 @@ class Message(EqualityMixin):
     def print_msg(self):
         ret = ""
         if self.typ == "PROPOSE":
-            ret += "    -> P%d  PROPOSE v=%d" %(self.dst[1], self.value)
+            ret += "    -> P%d  PROPOSE v=%d key=%s" %(self.dst[1], self.value, self.key)
         elif self.typ == "PREPARE":
-            ret += " P%d -> A%d  PREPARE n=%d" %(self.src[1], self.dst[1], self.n)
+            ret += " P%d -> A%d  PREPARE n=%d key=%s" %(self.src[1], self.dst[1], self.n, self.key)
         elif self.typ == "PROMISE":
             if self.prior_proposal != None:
                 prop_s = "n={}, v={}".format(self.prior_proposal[1], self.prior_proposal[0])
             else:
                 prop_s = self.prior_proposal
-            ret += " A%d -> P%d  PROMISE n=%d (Prior: %s)" %(self.src[1], self.dst[1], self.n, prop_s)
+            ret += " A%d -> P%d  PROMISE n=%d key=%s (Prior: %s)" %(self.src[1], self.dst[1], self.n, self.key, prop_s)
         elif self.typ == "ACCEPT":
-            ret += " P%d -> A%d  ACCEPT n=%d v=%d" %(self.src[1], self.dst[1], self.n, self.value)
+            ret += " P%d -> A%d  ACCEPT n=%d key=%s v=%d" %(self.src[1], self.dst[1], self.n, self.key, self.value)
         elif self.typ == "ACCEPTED":
-            ret += " A%d -> P%d  ACCEPTED n=%d v=%d" %(self.src[1], self.dst[1], self.n, self.value)
+            ret += " A%d -> P%d  ACCEPTED n=%d key=%s v=%d" %(self.src[1], self.dst[1], self.n, self.key, self.value)
         elif self.typ == "REJECTED":
-            ret += " A%d -> P%d  REJECTED n=%d" %(self.src[1], self.dst[1], self.n)    
+            ret += " A%d -> P%d  REJECTED n=%d key=%s" %(self.src[1], self.dst[1], self.n, self.key)    
         return ret
 
 #Adds message m to the end of the queue.
@@ -173,7 +173,7 @@ class Acceptor(object):
         self.ID = ID
         self.failed = False
         self.n_int = {} #the highest prepare request it has responded to
-        self.acced = [] #list of tuples values accepted (value, n) 
+        self.acced = {} #list of tuples values accepted (value, n) 
 
         self.leader = None
         self.leaderLease = dt.now()
@@ -181,9 +181,7 @@ class Acceptor(object):
     def deliver_message(self, N, msg):
 
       #INCLUDE THIS LINE WHEN IMPLEMENT MSGS WITH MSG.VALUE = <LEADERNAME>  
-      #if (msg.src[1] == self.leader) or (dt.now() > self.leaderLease): 
-        print msg.src[1],self.leader
-        print dt.now(),self.leaderLease
+      if (msg.src[1] == self.leader) or (dt.now() > self.leaderLease): 
         if msg.typ == "PREPARE":    
 
                 #if the new proposal has proposal_id >= the largest promised proposal
@@ -191,12 +189,13 @@ class Acceptor(object):
                     self.n_int[msg.key] = -1
                 
                 if msg.n >= self.n_int[msg.key]:
-                    if len(self.acced): #if any other proposals have been accepted 
-                        high_p = sorted(self.acced, key=lambda x: x[1])[-1]
+                    if msg.key in self.acced: #if any other proposals have been accepted for that key
+                        high_p = sorted(self.acced[msg.key], key=lambda x: x[1])[-1]
                         self.n_int[msg.key] = high_p[1] #send the latest (greatest n)
                     else:
                         high_p = None
                         self.n_int[msg.key] = msg.n
+			self.acced[msg.key] = []
                     new_msg = Message(msg.value, msg.key, "PROMISE", ('A', self.ID), msg.src, msg.n, high_p)
                     queue_message(N, new_msg)
 
@@ -204,14 +203,14 @@ class Acceptor(object):
             #if the proposal number is <= the highest numbered poposal promised:
             if self.n_int[msg.key] <= msg.n:
                 new_msg = Message(msg.value, msg.key, "ACCEPTED", ('A', self.ID), msg.src, msg.n, None)
-                self.acced.append((msg.value, msg.n)) 
+                self.acced[msg.key].append((msg.value, msg.n)) 
 
-                
                 if (msg.key == ELECTION_ID):
                     self.leader = msg.value
 
                     self.leaderLease = dt.now() + LEADER_LEASE_TIME
                     print "SET LEASE", self.leaderLease
+		    del self.acced[ELECTION_ID]
                 
 
             else:
@@ -219,4 +218,7 @@ class Acceptor(object):
             queue_message(N, new_msg)
         else:
             print "This is not a type of message an Acceptor should be receiving"
+      elif:
+	#actual leader is.....
+	#send REJECTED message either telling them to restart or that the leader is someone else and to direct they request there
 
