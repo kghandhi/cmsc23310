@@ -2,10 +2,30 @@ import json
 import sys
 import signal
 import zmq
+from datetime import datetime as dt
 from zmq.eventloop import ioloop, zmqstream
 ioloop.install()
 
-class Node:
+class Group(object):
+  def __init__(self, key_range, n_nodes, succ_g, pred_g, leader, members):
+    self.key_range = key_range
+    self.n_nodes = n_nodes
+    self.succ_g = succ_g
+    self.pred_g = pred_g
+    self.leader = leader
+    self.members = members
+    
+  def handle_merge(self, other):
+    pass
+
+
+  def handle_add_node():
+    pass
+
+  def handle_drop_node():
+    pass
+
+class Node(object):
   def __init__(self, node_name, pub_endpoint, router_endpoint, spammer, peer_names):
     self.loop = ioloop.ZMQIOLoop.instance()
     self.context = zmq.Context()
@@ -27,13 +47,33 @@ class Node:
     self.req.on_recv(self.handle_broker_message)
 
     self.name = node_name
+    self.key = None #should be a key range tuple (lb, ub]
+    
+    self.pred = None
+    self.succ = None
+    
+    self.group = None
+    
+    self.store = {'foo': 'bar'} # dic()
+    self.values = dic()
+    
+    self.isLeader = False
+    self.proposer = None
+    self.acceptor = None
+
     self.spammer = spammer
     self.peer_names = peer_names
-
-    self.store = {'foo': 'bar'}
-
+    
+  
     for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
       signal.signal(sig, self.shutdown)
+
+  def handle_join():
+    pass
+
+
+  def msg_create():
+    pass
 
   def start(self):
     '''
@@ -55,18 +95,31 @@ class Node:
     msg = json.loads(msg_frames[2])
 
     if msg['type'] == 'get':
-      # TODO: handle errors, esp. KeyError
+      # TODO: handle errors send along to the correct key range 
       k = msg['key']
-      v = self.store[k]
-      self.req.send_json({'type': 'log', 'debug': {'event': 'getting', 'node': self.name, 'key': k, 'value': v}})
-      self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': v})
+      if (k <= self.group.key_range[1]) and (k > self.group.key_range[0]):
+        try:
+          v = self.store[k]
+          self.req.send_json({'type': 'log', 'debug': {'event': 'getting', 'node': self.name, 'key': k, 'value': v}})
+          self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': v})
+        except KeyError:
+          print "Oops! That is not a key for which we have a value. Try again..."
+      elif (k <= self.group.key_range[0]):
+        self.req.send_json({'type' : 'getRelay', 'destination': [group.succ_g.leader], ,'id' : msg['id'], 'key': msg['key']})
+      elif (k > self.group.key_range[1]):
+        self.req.send_json({'type': 'getRelay', 'destination': [group.pred_g.leader], 'id': msg['id'], 'key': msg['key']})
+
+
     elif msg['type'] == 'set':
       # TODO: Paxos
       k = msg['key']
       v = msg['value']
+      self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'value': v})
+
       self.req.send_json({'type': 'log', 'debug': {'event': 'setting', 'node': self.name, 'key': k, 'value': v}})
-      self.store[k] = v
-      self.req.send_json({'type': 'setResponse', 'id': msg['id'], 'value': v})
+      #self.store[k] = v #propose this value?
+      #should this be the value we just set with paxos or just a confirmation?
+      self.req.send_json({'type': 'setResponse', 'id': msg['id'], 'value': v}) 
     elif msg['type'] == 'hello':
       # should be the very first message we see
       if not self.connected:
