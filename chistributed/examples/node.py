@@ -113,8 +113,9 @@ class Node(object):
     elif msg['type'] == 'set':
       # TODO: Paxos
       k = msg['key']
-      v = msg['value']
-      self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'value': v})
+      v = msg['value'] 
+      #fill in id, src maybe... because well want to pass it..
+      self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'id': None, 'key': k, 'value': v, 'prior': None})
 
       self.req.send_json({'type': 'log', 'debug': {'event': 'setting', 'node': self.name, 'key': k, 'value': v}})
       #self.store[k] = v #propose this value?
