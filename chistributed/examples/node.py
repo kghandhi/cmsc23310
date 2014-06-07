@@ -7,23 +7,20 @@ from zmq.eventloop import ioloop, zmqstream
 ioloop.install()
 
 class Group(object):
-  def __init__(self, key_range, n_nodes, succ_g, pred_g, leader, members):
+  def __init__(self, key_range, succ_g, pred_g, leader, members):
     self.key_range = key_range
-    self.n_nodes = n_nodes
-    self.succ_g = succ_g
-    self.pred_g = pred_g
     self.leader = leader
     self.members = members
     
   def handle_merge(self, other):
     pass
 
-
   def handle_add_node():
     pass
 
   def handle_drop_node():
     pass
+
 
 class Node(object):
   def __init__(self, node_name, pub_endpoint, router_endpoint, spammer, peer_names):
@@ -49,10 +46,9 @@ class Node(object):
     self.name = node_name
     self.key = None #should be a key range tuple (lb, ub]
     
-    self.pred = None
-    self.succ = None
-    
-    self.group = None
+    self.lgroup = None #group object
+    self.rgroup = None #group object
+    self.group = None #group object
     
     self.store = {'foo': 'bar'} # dic()
     self.values = dic()
@@ -71,16 +67,28 @@ class Node(object):
   def handle_join():
     pass
 
-
-  def msg_create():
-    pass
-
-  def start(self):
+  def start(self, msg):
     '''
     Simple manual poller, dispatching received messages and sending those in
     the message queue whenever possible.
     '''
     self.loop.start()
+    
+    #is this where we handle messages???
+
+    if (len(self.group.members) > 10):
+      #propose a split self.handle_split(), 2pc
+      pass
+    if (len(self.group.members) + len(self.lgroup.members)) < 10:
+      #propose join yourself and group to left self.handle_merge(self.lgroup) 2pc
+      #self.2pc(self.lgroup, {'type': 'START', 'id': "MERGE", "value": self.lgroup})
+      #self.2pc(self.rgroup, {'type': "START", "id": "MERGE", "value": self.lgroup})
+      pass
+    elif ((len(self.group.members) + len(self.rgroup.members)) < 10):
+      #propose join yourself and group to right self.handle_merge(self.rgroup)
+      #self.2pc(self.rgroup, {'type': "START", "id": "MERGE", "value": self.rgroup})
+      #self.2pc(self.lgroup, {'type': "START", "id": "MERGE", "value": self.rgroup})
+      pass
 
   def handle_broker_message(self, msg_frames):
     '''
@@ -104,8 +112,8 @@ class Node(object):
           self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': v})
         except KeyError:
           print "Oops! That is not a key for which we have a value. Try again..."
-      elif (k <= self.group.key_range[0]):
-        self.req.send_json({'type' : 'getRelay', 'destination': [group.succ_g.leader], ,'id' : msg['id'], 'key': msg['key']})
+      elif (k <= self.group.key_range[0]): #find out the highest value of a hash in sha1...
+        self.req.send_json({'type' : 'getRelay', 'destination': [group.succ_g.leader],'id' : msg['id'], 'key': msg['key']})
       elif (k > self.group.key_range[1]):
         self.req.send_json({'type': 'getRelay', 'destination': [group.pred_g.leader], 'id': msg['id'], 'key': msg['key']})
 
@@ -115,7 +123,7 @@ class Node(object):
       k = msg['key']
       v = msg['value'] 
       #fill in id, src maybe... because well want to pass it..
-      self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'id': None, 'key': k, 'value': v, 'prior': None})
+      self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'id': "SET_ID", 'key': k, 'value': v, 'prior': None})
 
       self.req.send_json({'type': 'log', 'debug': {'event': 'setting', 'node': self.name, 'key': k, 'value': v}})
       #self.store[k] = v #propose this value?

@@ -20,6 +20,7 @@ from datetime import timedelta
 ELECTION_ID = "ELECTION_ID"
 SPLIT_ID = "SPLIT_ID"
 JOIN_ID = "JOIN_ID"
+SET_ID = "SET_ID" #KIRA ADDED THIS, TO SET
 # + hashed keys (for groups keyspace)
 # + nodes names (for add join)
 
