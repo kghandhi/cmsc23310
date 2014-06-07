@@ -33,10 +33,7 @@ SPLIT_ID = "SPLIT_ID"
 MERGE_ID = "MERGE_ID"
 ADD_ID = "ADD_ID"
 REMOVE_ID = "REMOVE_ID"
-#<<<<<<< HEAD
-#=======
 
-#>>>>>>> 17982224dd0172ef6cc1106628858209b7b253d1
 # + hashed keys (for groups keyspace)
 # + nodes names (for add join)
 
@@ -292,6 +289,9 @@ class Acceptor(object):
                         #neither my neighbors nor myself??
                         pass
                 elif (msg.key == MERGE_ID):
+                    if self.name in msg.value.members:
+                        if 
+                        self.group = msg.value
                     pass
                 else:
                     del self.acced[msg.key]#ADD KEY VALUES TO NODE.VALUES

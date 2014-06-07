@@ -83,7 +83,7 @@ class Node(object):
     #is this where we handle messages???
     if self.leader == self.name:
       if (len(self.group.members) > MAX_GROUP): 
-      #propose a split self.handle_split(), 2pc
+      #SPLITTING
         old_key = self.group.key_range
         b = long(old_key[1])
         a = long(old_key[0])
@@ -107,21 +107,31 @@ class Node(object):
         right_ms = [old_ms[i] for i in xrange(l_sz, len(old_ms))]
         new_left = Group(left_key, None, left_ms)
         new_right = Group(right_key, None, right_ms)
-        self.2pc(self.lgroup, {"value": (new_left, new_right), "type": "START", "key": "SPLIT_ID"})
+        self.2pc(self.lgroup.leader, {"value": (new_left, new_right), "type": "START", "key": "SPLIT_ID"})
 
-        self.2pc(self.rgroup, {"value": (new_left, new_right), "type": "START", "key": "SPLIT_ID"}) 
+        self.2pc(self.rgroup.leader, {"value": (new_left, new_right), "type": "START", "key": "SPLIT_ID"}) 
               
                
     if (len(self.group.members) + len(self.lgroup.members)) < MAX_GROUP:
+      #MERGING LEFT
       #propose join yourself and group to left self.handle_merge(self.lgroup) 2pc
+      b = self.group.key_range[1]
+      a = self.lgroup.key_range[0]
+      new_ms = [x for x in self.group.members].extend(self.lgroup.members)
       
+      new_group = Group((a,b), None, new_ms)
+      # first join yourself with the group to your left. The new nodes should take the left group's left nodes and the right group's
+      # right nodes. T
+      self.2pc(self.lgroup.leader, {'type': "START", "key": "MERGE_ID", "value": new_group})
+      self.2pc(self.lgroup.leader
       #self.2pc(self.lgroup, {'type': 'START', 'id': "MERGE", "value": self.lgroup})
       #self.2pc(self.rgroup, {'type': "START", "id": "MERGE", "value": self.lgroup})
-      pass
+     
     elif ((len(self.group.members) + len(self.rgroup.members)) < MAX_GROUP):
+      #MERGING RIGHT
       #propose join yourself and group to right self.handle_merge(self.rgroup)
-      #self.2pc(self.rgroup, {'type': "START", "id": "MERGE", "value": self.rgroup})
-      #self.2pc(self.lgroup, {'type': "START", "id": "MERGE", "value": self.rgroup})
+      #self.2pc(self.rgroup, {'type': "START", "id": "MERGE_ID", "value": self.rgroup})
+      #self.2pc(self.lgroup, {'type': "START", "id": "MERGE_ID", "value": self.rgroup})
       pass
 
   def handle_broker_message(self, msg_frames):
