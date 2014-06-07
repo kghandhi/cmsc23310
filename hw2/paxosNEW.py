@@ -36,22 +36,11 @@ class EqualityMixin(object):
                 return False
         return True
 
-def from_json(msg_frames): 
-    #TODO: figure out if this should just be something we process in handle...
-    assert len(msg_frames) == 3
-    assert msg_frames[0] == self.name
-    msg = json.loads(msg_frames[2])
-    if msg["source"] and msg["destination"]:
-        return Message(msg["value"], msg["key"], msg["type"], msg["source"][0], msg["destination"][0], msg["id"], msg["prior"])
-    else:
-        return Message(msg["value"], msg["key"], msg["type"], [], msg["destination"][0], msg["id"], msg["prior"])
-    
-
 class Message(EqualityMixin):
     def __init__(self, value, key, typ, src, dst, n, prior_proposal):
         self.value = value 
         self.key = key #election, actualKey, merge, split
-        self.typ = typ #string PROPOSE, PREPARE, PROMISE, ACCEPT, ACCEPTED, REJECTED
+        self.typ = typ #string PROPOSE, PREPARE, PROMISE, ACCEPT, ACCEPTED, REJECTED, REDIRECT
         self.src = src #tuple (P or A, ID)
         self.dst = dst #tuple (P or A, ID)
         self.n = n #proposal_id
@@ -64,10 +53,6 @@ class Message(EqualityMixin):
         return FMT.format(self.value, self.typ, self.src, self.dst, 
                           self.n, self.prior_proposal)
     
-    def to_json(self): #so we want self.dst.name to be the name of the node and self.src.name to be the name of the node
-        return {"type": self.typ, "destination": [self.dst.name], "source": [self.src.name], "id" : self.n, "key": self.key, "value": self.value, "prior": self.prior_proposal}
-
-
     #this returns a string that should be printed in the simulate function w/time
     def print_msg(self):
         ret = ""
@@ -179,7 +164,14 @@ class Proposer(object):
             if (len(self.accepts[msg.n]) == self.majority):
                 if msg.n not in self.props_accepted:
                     self.props_accepted[msg.n] = (self.proposals[msg.n], msg.value)
-        else:
+	elif msg.typ == "REDIRECT":
+	    if msg.key not in self.redirects:
+	    	self.redirects[msg.key] = []
+	    if msg.n not in self.redirects[msg.key]:
+	        self.redirects[msg.key].append(msg.n)
+	        new_msg = Message(msg.value, msg.key, "PR0POSE", ('P', self.ID), ('P', msg.src), proposal_id, None)
+	        queue_message(N,new_msg)
+	else:
             print "This is not a type of message a Proposer should be receiving"
             
 
@@ -198,19 +190,19 @@ class Acceptor(object):
       #INCLUDE THIS LINE WHEN IMPLEMENT MSGS WITH MSG.VALUE = <LEADERNAME>  
       if (msg.src[1] == self.leader) or (dt.now() > self.leaderLease): 
         if msg.typ == "PREPARE":    
-
                 #if the new proposal has proposal_id >= the largest promised proposal
                 if msg.key not in self.n_int:
                     self.n_int[msg.key] = -1
                 
                 if msg.n >= self.n_int[msg.key]:
                     if msg.key in self.acced: #if any other proposals have been accepted for that key
+			print self.acced
                         high_p = sorted(self.acced[msg.key], key=lambda x: x[1])[-1]
                         self.n_int[msg.key] = high_p[1] #send the latest (greatest n)
                     else:
                         high_p = None
                         self.n_int[msg.key] = msg.n
-			self.acced[msg.key] = []
+			#self.acced[msg.key] = []
                     new_msg = Message(msg.value, msg.key, "PROMISE", ('A', self.ID), msg.src, msg.n, high_p)
                     queue_message(N, new_msg)
 
@@ -218,22 +210,26 @@ class Acceptor(object):
             #if the proposal number is <= the highest numbered poposal promised:
             if self.n_int[msg.key] <= msg.n:
                 new_msg = Message(msg.value, msg.key, "ACCEPTED", ('A', self.ID), msg.src, msg.n, None)
+		if msg.key not in self.acced:
+		    self.acced[msg.key] = []
+
                 self.acced[msg.key].append((msg.value, msg.n)) 
 
                 if (msg.key == ELECTION_ID):
                     self.leader = msg.value
-
                     self.leaderLease = dt.now() + LEADER_LEASE_TIME
                     print "SET LEASE", self.leaderLease
 		    del self.acced[ELECTION_ID]
-                
-
             else:
                 new_msg = Message(msg.value, msg.key, "REJECTED", ('A', self.ID), msg.src, msg.n, None)
             queue_message(N, new_msg)
         else:
             print "This is not a type of message an Acceptor should be receiving"
-      elif:
+      else:
+	print "YOU ARE NOT LEADER"
+	new_msg = Message(msg.value, msg.key, "REDIRECT", ('P', self.leader), msg.src, msg.n, None)
+	queue_message(N, new_msg)
+	
 	#actual leader is.....
 	#send REJECTED message either telling them to restart or that the leader is someone else and to direct they request there
 

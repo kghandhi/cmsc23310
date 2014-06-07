@@ -114,7 +114,7 @@ def proc_input(file_handle):
             break
         if len(line) == 3:
             n_p, n_a, t_max_s = line
-        elif len(line) == 5:
+        elif len(line) == 4 or len(line) == 5:
             key = int(line[0])
             
             if key in E:
