@@ -14,12 +14,23 @@ def receive_msg(other, msg):
         #if the length of the members group isnt too long for merges, isnt too small for splits etc.
             self.req.send_json(to_paxos)
             #if we reached concensus, else 'NO'
-            new_msg['type'] = 'YES'
+            if self.proposer.props_accepted[msg["key"]]:
+                new_msg['type'] = 'YES'
+            else:
+                mew_msg['type'] = 'NO'
+            self.req.send_json(new_msg)
+            
         elif typ == "YES":
             self.req.send_json(to_paxos)
+            if self.proposer.props_accepted[msg["key"]]:
+                for m in self.group.members:
+                    self.req.send_json({"type": "LEARN", "destination": [m], "source": [self.name], "key": msg["key"], "value": msg["value"]})
             new_msg['type'] = 'COMMIT'
         elif typ == "COMMIT":
             self.req.send_json(to_paxos)
-            new_msg['type'] = "DONE"
+            if self.proposer.props_accepted[msg["key"]]:
+                new_msg['type'] = "DONE"
+                self.req.send_json(new_msg)
     #check if all the paxos worked
-    self.req.send_json(new_msg)
+ 
+   

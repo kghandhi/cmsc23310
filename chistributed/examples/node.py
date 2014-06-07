@@ -3,11 +3,16 @@ import sys
 import signal
 import zmq
 from datetime import datetime as dt
+from datetime import timedelta
 from zmq.eventloop import ioloop, zmqstream
 ioloop.install()
 
+MAX_GROUP = 10
+MIN_GROUP = 4
+MAX_KEY = int('f'*128, 16)
+
 class Group(object):
-  def __init__(self, key_range, succ_g, pred_g, leader, members):
+  def __init__(self, key_range, leader, members):
     self.key_range = key_range
     self.leader = leader
     self.members = members
@@ -50,10 +55,11 @@ class Node(object):
     self.rgroup = None #group object
     self.group = None #group object
     
-    self.store = {'foo': 'bar'} # dic()
+    self.store = dic()
     self.values = dic()
     
-    self.isLeader = False
+    self.leader = None
+    self.leaderLease = dt.now
     self.proposer = None
     self.acceptor = None
 
@@ -75,16 +81,44 @@ class Node(object):
     self.loop.start()
     
     #is this where we handle messages???
-
-    if (len(self.group.members) > 10):
+    if self.leader == self.name:
+      if (len(self.group.members) > MAX_GROUP): 
       #propose a split self.handle_split(), 2pc
-      pass
-    if (len(self.group.members) + len(self.lgroup.members)) < 10:
+        old_key = self.group.key_range
+        b = long(old_key[1])
+        a = long(old_key[0])
+        if (b < a):
+          lrange = MAX_KEY - a
+          half_range = (lrange + b) / 2
+          if under < b:
+            left_key = (a, b - half_range)
+            right_key = (b - half_range, b)
+          else:
+            left_key = (a, a + half_range)
+            right_key = (a + half_range, b)
+        else:
+          half_range = (b - a) / 2 
+          left_key = (a, half_range + a)
+          right_key = (half_range + a, b)
+
+        old_ms = self.group.members
+        l_sz = len(old_ms) / 2
+        left_ms = [old_ms[i] for i in xrange(l_sz)]
+        right_ms = [old_ms[i] for i in xrange(l_sz, len(old_ms))]
+        new_left = Group(left_key, None, left_ms)
+        new_right = Group(right_key, None, right_ms)
+        self.2pc(self.lgroup, {"value": (new_left, new_right), "type": "START", "key": "SPLIT_ID"})
+
+        self.2pc(self.rgroup, {"value": (new_left, new_right), "type": "START", "key": "SPLIT_ID"}) 
+              
+               
+    if (len(self.group.members) + len(self.lgroup.members)) < MAX_GROUP:
       #propose join yourself and group to left self.handle_merge(self.lgroup) 2pc
+      
       #self.2pc(self.lgroup, {'type': 'START', 'id': "MERGE", "value": self.lgroup})
       #self.2pc(self.rgroup, {'type': "START", "id": "MERGE", "value": self.lgroup})
       pass
-    elif ((len(self.group.members) + len(self.rgroup.members)) < 10):
+    elif ((len(self.group.members) + len(self.rgroup.members)) < MAX_GROUP):
       #propose join yourself and group to right self.handle_merge(self.rgroup)
       #self.2pc(self.rgroup, {'type': "START", "id": "MERGE", "value": self.rgroup})
       #self.2pc(self.lgroup, {'type': "START", "id": "MERGE", "value": self.rgroup})
@@ -123,7 +157,7 @@ class Node(object):
       k = msg['key']
       v = msg['value'] 
       #fill in id, src maybe... because well want to pass it..
-      self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'id': "SET_ID", 'key': k, 'value': v, 'prior': None})
+      self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, 'value': v, 'prior': None})
 
       self.req.send_json({'type': 'log', 'debug': {'event': 'setting', 'node': self.name, 'key': k, 'value': v}})
       #self.store[k] = v #propose this value?
