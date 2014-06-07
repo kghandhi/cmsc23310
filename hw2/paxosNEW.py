@@ -33,10 +33,10 @@ SPLIT_ID = "SPLIT_ID"
 MERGE_ID = "MERGE_ID"
 ADD_ID = "ADD_ID"
 REMOVE_ID = "REMOVE_ID"
-<<<<<<< HEAD
-=======
+#<<<<<<< HEAD
+#=======
 
->>>>>>> 17982224dd0172ef6cc1106628858209b7b253d1
+#>>>>>>> 17982224dd0172ef6cc1106628858209b7b253d1
 # + hashed keys (for groups keyspace)
 # + nodes names (for add join)
 
