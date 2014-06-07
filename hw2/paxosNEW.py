@@ -3,6 +3,13 @@ import math
 #include node
 
 #TODO
+#
+#change majority when groupsize changes
+#
+#
+#
+#if you recieve a PROPOSE and youre not the leader, forward to leader
+#
 #implement leader reapplys for leaderlease a couple secs
 #   before lease expires
 #nodes appy for leadership couple secs after lease ends
@@ -26,7 +33,10 @@ SPLIT_ID = "SPLIT_ID"
 MERGE_ID = "MERGE_ID"
 ADD_ID = "ADD_ID"
 REMOVE_ID = "REMOVE_ID"
+#<<<<<<< HEAD
+#=======
 
+#>>>>>>> 17982224dd0172ef6cc1106628858209b7b253d1
 # + hashed keys (for groups keyspace)
 # + nodes names (for add join)
 
@@ -52,7 +62,7 @@ def from_json(msg_frames):
         return Message(msg["value"], msg["key"], msg["type"], msg["source"][0], msg["destination"][0], msg["id"], msg["prior"])
     else:
         return Message(msg["value"], msg["key"], msg["type"], [], msg["destination"][0], msg["id"], msg["prior"])
-  
+    
 
 class Message(EqualityMixin):
     def __init__(self, value, key, typ, src, dst, n, prior_proposal):
@@ -121,9 +131,9 @@ def extract_message(N, accs, props):
             N.remove(msg)
             return msg
         
-            
+        
     return 0 #consider creating a length of message function 
-           
+
 class Proposer(object):
     def __init__(self, ID, accs):
         self.ID = ID
@@ -135,8 +145,8 @@ class Proposer(object):
         self.accepts = {} #(msg.value, msg.n) of accepted msgs indexed by n
         self.props_accepted = {} #concensus values indexed by msg.n, (proposed, accepted) tuples
         self.proposals = {} #dictionary of PROPOSE msgs => key, msg.n, value, msg.value
-	self.redirects = {}
-   
+        self.redirects = {}
+        
     def deliver_message(self, N, msg):
         global proposal_id
         if msg.typ == "PROPOSE":
@@ -161,7 +171,7 @@ class Proposer(object):
             #greatest proposal_id and issue ACCEPT requests to everyone
             if (len(self.promises[msg.n]) == self.majority): 
                 pick_tup = sorted(self.promises[msg.n], key=lambda x: x[1])[0]
-               
+                
                 for c_a in self.accs:
                     new_msg = Message(pick_tup[0], msg.key, "ACCEPT", ('P', self.ID), ('A', c_a.ID), msg.n, None)
                     queue_message(N, new_msg)
@@ -188,12 +198,20 @@ class Proposer(object):
                 self.accepts[msg.n].append((msg.value, msg.n))
             else:
                 self.accepts[msg.n] = [(msg.value, msg.n)]
+
             if (len(self.accepts[msg.n]) == self.majority):
-                if msg.n not in self.props_accepted:
-                    self.props_accepted[msg.n] = (self.proposals[msg.n], msg.value)
-                    for c_a in self.accs:
-                        new_msg = Message(msg.value, msg.key, "LEARN", ('P', self.ID), ('A', c_a.ID), proposal_id, None)
-                        queue_message(N, new_msg)
+                if msg.key not in self.props_accepted:
+                    self.props_accepted[msg.key] = []
+                if msg.n not in self.props_accepted[msg.key]:
+                    self.props_accepted[msg.key] = (msg.n,self.proposals[msg.n], msg.value)
+
+                    if msg.key == MERGE_ID or msg.key == SPLIT_ID:
+                        pass
+                    else:
+                        for c_a in self.accs:
+                            new_msg = Message(msg.value, msg.key, "LEARN", ('P', self.ID), ('A', c_a.ID), proposal_id, None)
+                            queue_message(N, new_msg)
+
 		    #IF PASSED  VAL IS A "SET VAL"
 		    #    ADJUST MY NODE.VALUES
 		    #CHANGE LEADER, ETC
@@ -219,8 +237,8 @@ class Acceptor(object):
         self.leaderLease = dt.now()
 
     def deliver_message(self, N, msg):
-      if (msg.src[1] == self.leader) or (dt.now() > self.leaderLease): 
-        if msg.typ == "PREPARE":    
+        if (msg.src[1] == self.leader) or (dt.now() > self.leaderLease): 
+            if msg.typ == "PREPARE":    
                 #if the new proposal has proposal_id >= the largest promised proposal
                 if msg.key not in self.n_int:
                     self.n_int[msg.key] = -1
@@ -234,43 +252,53 @@ class Acceptor(object):
                         self.n_int[msg.key] = msg.n
                     new_msg = Message(msg.value, msg.key, "PROMISE", ('A', self.ID), msg.src, msg.n, high_p)
                     queue_message(N, new_msg)
-
-        elif msg.typ == "ACCEPT":
-            #if the proposal number is <= the highest numbered poposal promised:
-            if self.n_int[msg.key] <= msg.n:
-                new_msg = Message(msg.value, msg.key, "ACCEPTED", ('A', self.ID), msg.src, msg.n, None)
-		if msg.key not in self.acced:
-		    self.acced[msg.key] = []
-
-                self.acced[msg.key].append((msg.value, msg.n)) 
-
-            else:
-                new_msg = Message(msg.value, msg.key, "REJECTED", ('A', self.ID), msg.src, msg.n, None)
-            queue_message(N, new_msg)
-
-	elif msg.typ == "LEARN":
+            elif msg.typ == "ACCEPT":
+                #if the proposal number is <= the highest numbered poposal promised:
+                if self.n_int[msg.key] <= msg.n:
+                    new_msg = Message(msg.value, msg.key, "ACCEPTED", ('A', self.ID), msg.src, msg.n, None)
+                    if msg.key not in self.acced:
+                        self.acced[msg.key] = []
+                        self.acced[msg.key].append((msg.value, msg.n)) 
+                else:
+                    new_msg = Message(msg.value, msg.key, "REJECTED", ('A', self.ID), msg.src, msg.n, None)
+                queue_message(N, new_msg)
+    	    elif msg.typ == "LEARN":
                 if (msg.key == ELECTION_ID):
                     self.leader = msg.value
                     self.leaderLease = dt.now() + LEADER_LEASE_TIME
                     print "SET LEASE", self.leaderLease
-		    del self.acced[ELECTION_ID]
-		elif (msg.key == ADD_ID):
-		   pass
-		elif (msg.key == REMOVE_ID):
-		   pass
-		elif (msg.key == SPLIT_ID):
-		   pass
-		elif (msg.key == MERGE_ID):
-		   pass
-		else:
-		   del self.acced[msg.key]
-		   #ADD KEY VALUES TO NODE.VALUES
-		   pass
-		    
+                    del self.acced[ELECTION_ID]
+                elif (msg.key == ADD_ID):
+                    pass
+                elif (msg.key == REMOVE_ID):
+                    pass
+                elif (msg.key == SPLIT_ID):
+                    if (msg.value[0].key_range[0] == super.group.key_range[1]):
+                        super.rgroup = msg.value[0]
+                    elif (msg.value[1].key_range[1] == super.group.key_range[0]):
+                        super.lgroup = msg.value[1]
+                    elif (msg.value[0].key_range[0] == super.group.key_range[0]) and (msg.value[1].key_range[1] == super.group.key_range[1]):
+                        if super.name in msg.value[0].members:
+                            super.group = msg.value[0]
+                            super.rgroup = msg.value[1]
+                        elif super.name in msg.value[1].members:
+                            super.group = msg.value[1]
+                            super.lgroup = msg.value[0]
+                        else:
+                            #you arent in any groups?!?
+                            #massive problem
+                            pass
+                    else:
+                        #neither my neighbors nor myself??
+                        pass
+                elif (msg.key == MERGE_ID):
+                    pass
+                else:
+                    del self.acced[msg.key]#ADD KEY VALUES TO NODE.VALUES
+            else:
+                print "This is not a type of message an Acceptor should be receiving"
         else:
-            print "This is not a type of message an Acceptor should be receiving"
-      else:
-	print "YOU ARE NOT LEADER"
-	new_msg = Message(msg.value, msg.key, "REDIRECT", ('P', self.leader), msg.src, msg.n, None)
-	queue_message(N, new_msg)
+            print "YOU ARE NOT LEADER"
+            new_msg = Message(msg.value, msg.key, "REDIRECT", ('P', self.leader), msg.src, msg.n, None)
+            queue_message(N, new_msg)
 
