@@ -36,6 +36,17 @@ class EqualityMixin(object):
                 return False
         return True
 
+def from_json(msg_frames): 
+    #TODO: figure out if this should just be something we process in handle...
+    assert len(msg_frames) == 3
+    assert msg_frames[0] == self.name
+    msg = json.loads(msg_frames[2])
+    if msg["source"] and msg["destination"]:
+        return Message(msg["value"], msg["key"], msg["type"], msg["source"][0], msg["destination"][0], msg["id"], msg["prior"])
+    else:
+        return Message(msg["value"], msg["key"], msg["type"], [], msg["destination"][0], msg["id"], msg["prior"])
+  
+
 class Message(EqualityMixin):
     def __init__(self, value, key, typ, src, dst, n, prior_proposal):
         self.value = value 
@@ -52,6 +63,10 @@ class Message(EqualityMixin):
         
         return FMT.format(self.value, self.typ, self.src, self.dst, 
                           self.n, self.prior_proposal)
+
+    def to_json(self): #so we want self.dst.name to be the name of the node and self.src.name to be the name of the node
+        return {"type": self.typ, "destination": [self.dst.name], "source": [self.src.name], "id" : self.n, "key": self.key, "value": self.value, "prior": self.prior_proposal}
+
     
     #this returns a string that should be printed in the simulate function w/time
     def print_msg(self):
