@@ -25,6 +25,7 @@ ELECTION_ID = "ELECTION_ID"
 SPLIT_ID = "SPLIT_ID"
 MERGE_ID = "MERGE_ID"
 MERGE_REQ = "MERGE_REQ"
+MERGE_FWD = "MERGE_FWD"
 ADD_ID = "ADD_ID"
 REMOVE_ID = "REMOVE_ID"
 
@@ -262,6 +263,8 @@ class Acceptor(object):
 		elif (msg.key == SPLIT_ID):
 		   pass
 		elif (msg.key == MERGE_ID):
+                    if msg.value == "READY":
+                        super.
 		   pass
 		else:
 		   del self.acced[msg.key]

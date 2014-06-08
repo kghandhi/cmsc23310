@@ -65,7 +65,7 @@ class Node(object):
 
     self.spammer = spammer
     self.peer_names = peer_names
-    self.TWOpc_dummy = 0
+    self.okays = {} #dictionary of okays received hashed on "MERGE": (merge_type, source) or "SPLIT": int
   
     for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
       signal.signal(sig, self.shutdown)
@@ -73,7 +73,7 @@ class Node(object):
   def handle_join():
     pass
 
-  def handle_split():
+  def handle_split(self):
     old_key = self.group.key_range
     b = long(old_key[1])
     a = long(old_key[0])
@@ -100,7 +100,7 @@ class Node(object):
 
     return (new_left, new_right)
 
-  def handle_merge(side):
+  def handle_merge(self, side):
     if side == "left":
       b = self.group.key_range[1]
       a = self.lgroup.key_range[0]
@@ -120,6 +120,9 @@ class Node(object):
     the message queue whenever possible.
     '''
     self.loop.start()
+
+    ### NOTE: when we figure out how to make this loopy, we should reset self.okays before we do this check every time we loop 
+    self.okays.clear()
 
     if self.leader == self.name:
       if (len(self.group.members) > MAX_GROUP): 
@@ -162,7 +165,6 @@ class Node(object):
       elif (k > self.group.key_range[1]):
         self.req.send_json({'type': 'getRelay', 'destination': [group.pred_g.leader], 'id': msg['id'], 'key': msg['key']})
 
-
     elif typ == 'set':
       # TODO: Paxos
       k = msg['key']
@@ -184,40 +186,70 @@ class Node(object):
           self.loop.add_callback(self.send_spam)
 
     #---------- Two Phase Commit Handling -----------#
-    elif typ == "START": #could have a source as the self.name of the node
-      self.req.send_json({"source": [self.group.leader], "type": "PROPOSE", "destination": [self.leader], "key": msg["key"], "value": "START"})
+    if typ == "START":
+        self.req.send_json({"destination": [self.group.leader], "type": "PROPOSE", "key": msg["key"], "value": "START"})
+        if self.proposer.props_accepted[msg["key"]]:
+            self.req.send_json({"type": "READY", "destination": msg["source"], "source": [self.name], "key": msg["key"], "value": msg["value"]})
 
-    elif typ == "READY" and msg["key"] == "MERGE_REQ":      
-      self.req.send_json({"type": "PROPOSE", "destination": [self.leader], "key": msg["key"], "value": "READY"})
-      if msg["key"] == "MERGE_REQ":
-        if msg["source"] == [self.lgroup.leader]:
-          self.req.send_json({"type": "READY", "destination": [self.rgroup.leader], "key": "MERGE_ID", "value": "READY"})
-        elif msg["source"] == [self.rgroup.leader]:
-          self.req.send_json({"type": "READY", "destination": [self.lgroup.leader], "key": "MERGE_ID", "value": "READY"})
-    elif typ == "YES" and msg["key"] == "MERGE_ID":
-      if msg["source"] == [self.lgroup.leader]:
-        self.req.send_json({"type": "YES", "destination":[self.rgroup.leader] })
-      elif msg["source"] == [self.rgoup.leader]:
-        self.req.send_json({"type": "YES", "destination": [self.lgroup.leader] })
+    elif typ == "READY":
+        response = {"destination": msg["source"], "source": [self.name], "key": msg["key"], "value": msg["value"]}
+        if msg["key"] != "MERGE_REQ":
+            self.req.send_json({"type": "PROPOSE", "destination": [self.group.leader], "key": msg["key"], "value": "READY"})
+            
+            if self.proposer.props_accepted[msg["key"]]:
+                response["type"] = "OK"
+            else:
+                response["type"] = "NO"
+            self.req.send_json(response)
+        else:
+            new_msg = {"type": "READY", "key": "MERGE_FWD", "value": msg["value"], "source": [self.name]}
+            if msg["source"] == [self.lgroup.leader]:
+                new_msg["destination"] = self.rgroup.leader
+            else:
+                new_msg["destination"] = self.lgroup.leader
+            self.req.send_json(new_msg)
+            
+    elif typ == "OK":
+        response = {"destination": msg["source"], "source": [self.name], "key": msg["key"], "value": msg["value"]}
+        if msg["key"] == "MERGE_FWD":
+            #should I paxos here to decide to forward it as an okay? yes probably
+            self.req.send_json({"type": "PROPOSE", "destination": [self.group.leader], "key": "MERGE_REQ", "value": "READY"})
+            if self.proposer.props_acced[msg["key"]]:
+                response["type"] = "OK"
+                self.req.send_json(response)
+        else:
+            if msg["key"] == "MERGE_REQ" or msg["key"] == "MERGE_ID":
+                if "MERGE" in self.okays:
+                    self.okays["MERGE"].append((msg["key"], msg["source"][0]))
+                else:
+                    self.okays["MERGE"] = [(msg["key"], msg["source"][0])]
+                if len(self.okays["MERGE"]) == 2:
+                    to_merge = [x for x in self.okays["MERGE"] if x[0] == "MERGE_REQ"]
+                    assert (len(to_merge) == 1)
+                    if to_merge[1] == self.lgroup.leader:
+                        v = self.handle_merge("left")
+                     
+                    elif to_merge[1] == self.rgroup.leader:
+                        v = self.handle_merge("right")
+                    self.okays["MERGE"] = []
+            elif msg["key"] == "SPLIT_ID":
+                self.okays["SPLIT"] += 1
+                if self.okays["SPLIT"] == 2:
+                    v = self.handle_split()
+                    self.okays["SPLIT"] = 0
+                    
+                response["type"] = "COMMIT"
+                response["value"] = v
+                response["destination"] = [self.lgroup.leader]
+                self.req.send_json(response)
+                response["destination"] = [self.rgroup.leader]
+                self.req.send_json(response)
 
-    elif typ == "YES":
-      self.TWOpc_dummy += 1
-      if self.TWOpc_dummy == 2:
-        if msg["key"] == "MERGE_REQ":
-          if msg["source"] == [self.lgroup.leader]:
-            v = self.handle_merge("left")
-          elif msg["source"] == [self.rgroup.leader]:
-            v = self.handle_merge("right")
-        elif msg["key"] == "SPLIT_ID":
-          v = self.handle_split()
-        self.TWOpc = 0
-        self.req.send_json({"type": "COMMIT", "destination": [self.lgroup.leader], "value": v, "key": msg["key"]})
-        self.req.send_json({"type": "COMMIT", "destination": [self.rgroup.leader], "value": v, "key": msg["key"]})
-    
     elif typ == "COMMIT":
-      self.req.send_json({"type": "PROPOSE", "destination": [self.group.leader], "value": msg["value"], "key": msg["key"]})
+        #when this is committed and its a merge, make sure to pass on a new left or right group in paxos with a propose message
+        self.req.send_json({"type": "PROPOSE", "destination": [self.group.leader], "key": msg["key"], "value": msg["value"]})
 
-    elif msg['type'] == 'spam':
+    elif typ == 'spam':
       self.req.send_json({'type': 'log', 'spam': msg})
     else:
       self.req.send_json({'type': 'log', 'debug': {'event': 'unknown', 'node': self.name}})
