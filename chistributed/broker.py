@@ -495,8 +495,6 @@ class Broker:
            ' --router-endpoint ' + self.router_endpoint + \
            command['params']
 
-    print args
-
     if not hasattr(self, "devnull"):
       self.devnull = open(os.devnull, "w")
 

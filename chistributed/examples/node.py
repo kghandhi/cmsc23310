@@ -120,7 +120,7 @@ class Node(object):
     the message queue whenever possible.
     '''
     self.loop.start()
-
+    
     if self.leader == self.name:
       if (len(self.group.members) > MAX_GROUP): 
       #SPLITTING
