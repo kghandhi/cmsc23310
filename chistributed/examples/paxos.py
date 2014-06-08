@@ -24,6 +24,7 @@ from datetime import timedelta
 ELECTION_ID = "ELECTION_ID"
 SPLIT_ID = "SPLIT_ID"
 MERGE_ID = "MERGE_ID"
+MERGE_REQ = "MERGE_REQ"
 ADD_ID = "ADD_ID"
 REMOVE_ID = "REMOVE_ID"
 

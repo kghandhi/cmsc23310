@@ -65,7 +65,7 @@ class Node(object):
 
     self.spammer = spammer
     self.peer_names = peer_names
-    
+    self.2pc_dummy = 0
   
     for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
       signal.signal(sig, self.shutdown)
@@ -73,66 +73,65 @@ class Node(object):
   def handle_join():
     pass
 
+  def handle_split():
+    old_key = self.group.key_range
+    b = long(old_key[1])
+    a = long(old_key[0])
+    if (b < a):
+      lrange = MAX_KEY - a
+      half_range = (lrange + b) / 2
+      if under < b:
+        left_key = (a, b - half_range)
+        right_key = (b - half_range, b)
+      else:
+        left_key = (a, a + half_range)
+        right_key = (a + half_range, b)
+    else:
+      half_range = (b - a) / 2 
+      left_key = (a, half_range + a)
+      right_key = (half_range + a, b)
+
+      old_ms = self.group.members
+      l_sz = len(old_ms) / 2
+      left_ms = [old_ms[i] for i in xrange(l_sz)]
+      right_ms = [old_ms[i] for i in xrange(l_sz, len(old_ms))]
+      new_left = Group(left_key, None, left_ms)
+      new_right = Group(right_key, None, right_ms)
+
+    return (new_left, new_right)
+
+  def handle_merge(side):
+    if side == "left":
+      b = self.group.key_range[1]
+      a = self.lgroup.key_range[0]
+      new_ms = [x for x in self.group.members].extend(self.lgroup.members)
+    
+    elif side == "right":
+      a = self.group.key_range[0]
+      b = self.rgroup.key_range[1]
+      new_ms = [x for x in self.group.members].extend(self.rgroup.members)
+      
+    new_group = Group((a,b), None, new_ms)
+    return new_group
+
   def start(self, msg):
     '''
     Simple manual poller, dispatching received messages and sending those in
     the message queue whenever possible.
     '''
     self.loop.start()
-    
-    #is this where we handle messages???
+
     if self.leader == self.name:
       if (len(self.group.members) > MAX_GROUP): 
       #SPLITTING
-        old_key = self.group.key_range
-        b = long(old_key[1])
-        a = long(old_key[0])
-        if (b < a):
-          lrange = MAX_KEY - a
-          half_range = (lrange + b) / 2
-          if under < b:
-            left_key = (a, b - half_range)
-            right_key = (b - half_range, b)
-          else:
-            left_key = (a, a + half_range)
-            right_key = (a + half_range, b)
-        else:
-          half_range = (b - a) / 2 
-          left_key = (a, half_range + a)
-          right_key = (half_range + a, b)
-
-        old_ms = self.group.members
-        l_sz = len(old_ms) / 2
-        left_ms = [old_ms[i] for i in xrange(l_sz)]
-        right_ms = [old_ms[i] for i in xrange(l_sz, len(old_ms))]
-        new_left = Group(left_key, None, left_ms)
-        new_right = Group(right_key, None, right_ms)
-        self.2pc(self.lgroup.leader, {"value": (new_left, new_right), "type": "START", "key": "SPLIT_ID"})
-
-        self.2pc(self.rgroup.leader, {"value": (new_left, new_right), "type": "START", "key": "SPLIT_ID"}) 
-              
-               
-    if (len(self.group.members) + len(self.lgroup.members)) < MAX_GROUP:
+        self.req.send_json({"destination": [self.group.leader], "type": "START", "key": "SPLIT_ID"})
+                             
+      elif (len(self.group.members) + len(self.lgroup.members)) < MAX_GROUP:
       #MERGING LEFT
-      #propose join yourself and group to left self.handle_merge(self.lgroup) 2pc
-      b = self.group.key_range[1]
-      a = self.lgroup.key_range[0]
-      new_ms = [x for x in self.group.members].extend(self.lgroup.members)
-      
-      new_group = Group((a,b), None, new_ms)
-      # first join yourself with the group to your left. The new nodes should take the left group's left nodes and the right group's
-      # right nodes. T
-      self.2pc(self.lgroup.leader, {'type': "START", "key": "MERGE_ID", "value": new_group})
-      self.2pc(self.lgroup.leader
-      #self.2pc(self.lgroup, {'type': 'START', 'id': "MERGE", "value": self.lgroup})
-      #self.2pc(self.rgroup, {'type': "START", "id": "MERGE", "value": self.lgroup})
-     
-    elif ((len(self.group.members) + len(self.rgroup.members)) < MAX_GROUP):
+        self.req.send_json({"destination": [self.group.leader], "type": "START", "key": "MERGE_ID"})
+      elif ((len(self.group.members) + len(self.rgroup.members)) < MAX_GROUP):
       #MERGING RIGHT
-      #propose join yourself and group to right self.handle_merge(self.rgroup)
-      #self.2pc(self.rgroup, {'type': "START", "id": "MERGE_ID", "value": self.rgroup})
-      #self.2pc(self.lgroup, {'type': "START", "id": "MERGE_ID", "value": self.rgroup})
-      pass
+        self.req.send_json({"destination": [self.group.leader], "type": "START", "key": "MERGE_ID"]})
 
   def handle_broker_message(self, msg_frames):
     '''
@@ -145,8 +144,10 @@ class Node(object):
     assert msg_frames[0] == self.name
     # Second field is the empty delimiter
     msg = json.loads(msg_frames[2])
+    typ = msg['type']
 
-    if msg['type'] == 'get':
+
+    if typ == 'get':
       # TODO: handle errors send along to the correct key range 
       k = msg['key']
       if (k <= self.group.key_range[1]) and (k > self.group.key_range[0]):
@@ -162,7 +163,7 @@ class Node(object):
         self.req.send_json({'type': 'getRelay', 'destination': [group.pred_g.leader], 'id': msg['id'], 'key': msg['key']})
 
 
-    elif msg['type'] == 'set':
+    elif typ == 'set':
       # TODO: Paxos
       k = msg['key']
       v = msg['value'] 
@@ -173,7 +174,7 @@ class Node(object):
       #self.store[k] = v #propose this value?
       #should this be the value we just set with paxos or just a confirmation?
       self.req.send_json({'type': 'setResponse', 'id': msg['id'], 'value': v}) 
-    elif msg['type'] == 'hello':
+    elif typ == 'hello':
       # should be the very first message we see
       if not self.connected:
         self.connected = True
@@ -181,10 +182,47 @@ class Node(object):
         # if we're a spammer, start spamming!
         if self.spammer:
           self.loop.add_callback(self.send_spam)
+
+    #---------- Two Phase Commit Handling -----------#
+    elif typ == "START": #could have a source as the self.name of the node
+      self.req.send_json({"source": [self.group.leader], "type": "PROPOSE", "destination": [self.leader], "key": msg["key"], "value": "START"})
+
+    elif typ == "READY" and msg["key"] == "MERGE_REQ":      
+      self.req.send_json({"type": "PROPOSE", "destination": [self.leader], "key": msg["key"], "value": "READY"})
+      if msg["key"] == "MERGE_REQ":
+        if msg["source"] == [self.lgroup.leader]:
+          self.req.send_json({"type": "READY", "destination": [self.rgroup.leader], "key": "MERGE_ID", "value": "READY"})
+        elif msg["source"] == [self.rgroup.leader]:
+          self.req.send_json({"type": "READY", "destination": [self.lgroup.leader], "key": "MERGE_ID", "value": "READY"})
+    elif typ == "YES" and msg["key"] == "MERGE_ID":
+      if msg["source"] == [self.lgroup.leader]:
+        self.req.send_json({"type": "YES", "destination":[self.rgroup.leader] })
+      elif msg["source"] == [self.rgoup.leader]:
+        self.req.send_json({"type": "YES", "destination": [self.lgroup.leader], "key"})
+
+    elif typ == "YES":
+      self.2pc_dummy += 1
+      if self.2pc_dummy == 2:
+        if msg["key"] == "MERGE_REQ":
+          if msg["source"] == [self.lgroup.leader]:
+            v = self.handle_merge("left")
+          elif msg["source"] == [self.rgroup.leader]:
+            v = self.handle_merge("right")
+        elif msg["key"] == "SPLIT_ID":
+          v = self.handle_split()
+        self.2pc = 0
+        self.req.send_json({"type": "COMMIT", "destination": [self.lgroup.leader], "value": v, "key": msg["key"]})
+        self.req.send_json({"type": "COMMIT", "destination": [self.rgroup.leader], "value": v, "key": msg["key"]})
+    
+    elif typ == "COMMIT":
+      self.req.send_json({"type": "PROPOSE", "destination": [self.group.leader], "value": msg["value"], "key": msg["key"]})
+
     elif msg['type'] == 'spam':
       self.req.send_json({'type': 'log', 'spam': msg})
     else:
       self.req.send_json({'type': 'log', 'debug': {'event': 'unknown', 'node': self.name}})
+
+               
 
   def send_spam(self):
     '''
