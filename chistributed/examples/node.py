@@ -55,8 +55,8 @@ class Node(object):
     self.rgroup = None #group object
     self.group = None #group object
     
-    self.store = dic()
-    self.values = dic()
+    self.store = {}
+    self.values = {}
     
     self.leader = None
     self.leaderLease = dt.now
@@ -65,7 +65,7 @@ class Node(object):
 
     self.spammer = spammer
     self.peer_names = peer_names
-    self.2pc_dummy = 0
+    self.TWOpc_dummy = 0
   
     for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
       signal.signal(sig, self.shutdown)
@@ -114,7 +114,7 @@ class Node(object):
     new_group = Group((a,b), None, new_ms)
     return new_group
 
-  def start(self, msg):
+  def start(self):
     '''
     Simple manual poller, dispatching received messages and sending those in
     the message queue whenever possible.
@@ -131,7 +131,7 @@ class Node(object):
         self.req.send_json({"destination": [self.group.leader], "type": "START", "key": "MERGE_ID"})
       elif ((len(self.group.members) + len(self.rgroup.members)) < MAX_GROUP):
       #MERGING RIGHT
-        self.req.send_json({"destination": [self.group.leader], "type": "START", "key": "MERGE_ID"]})
+        self.req.send_json({"destination": [self.group.leader], "type": "START", "key": "MERGE_ID"})
 
   def handle_broker_message(self, msg_frames):
     '''
@@ -198,11 +198,11 @@ class Node(object):
       if msg["source"] == [self.lgroup.leader]:
         self.req.send_json({"type": "YES", "destination":[self.rgroup.leader] })
       elif msg["source"] == [self.rgoup.leader]:
-        self.req.send_json({"type": "YES", "destination": [self.lgroup.leader], "key"})
+        self.req.send_json({"type": "YES", "destination": [self.lgroup.leader] })
 
     elif typ == "YES":
-      self.2pc_dummy += 1
-      if self.2pc_dummy == 2:
+      self.TWOpc_dummy += 1
+      if self.TWOpc_dummy == 2:
         if msg["key"] == "MERGE_REQ":
           if msg["source"] == [self.lgroup.leader]:
             v = self.handle_merge("left")
@@ -210,7 +210,7 @@ class Node(object):
             v = self.handle_merge("right")
         elif msg["key"] == "SPLIT_ID":
           v = self.handle_split()
-        self.2pc = 0
+        self.TWOpc = 0
         self.req.send_json({"type": "COMMIT", "destination": [self.lgroup.leader], "value": v, "key": msg["key"]})
         self.req.send_json({"type": "COMMIT", "destination": [self.rgroup.leader], "value": v, "key": msg["key"]})
     

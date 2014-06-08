@@ -488,11 +488,14 @@ class Broker:
 
     Highly unsafe of course.
     '''
+   
     args = self.node_executable + \
            ' --node-name ' + command['name'] + \
            ' --pub-endpoint ' + self.pub_endpoint + \
            ' --router-endpoint ' + self.router_endpoint + \
            command['params']
+
+    print args
 
     if not hasattr(self, "devnull"):
       self.devnull = open(os.devnull, "w")
