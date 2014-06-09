@@ -34,7 +34,7 @@ class Node:
     self.peer_names = peer_names
     self.hello = False
 
-    self.store = {} #{'foo': 'bar'}
+    self.store = {'foo': 'bar'}
 
     for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
       signal.signal(sig, self.shutdown)

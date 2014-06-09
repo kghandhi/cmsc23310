@@ -112,6 +112,7 @@ class Node(object):
       new_ms = [x for x in self.group.members].extend(self.rgroup.members)
       
     new_group = Group((a,b), None, new_ms)
+    #remember to paxos the self.store of each leader
     return new_group
 
   def start(self):
@@ -120,14 +121,10 @@ class Node(object):
     the message queue whenever possible.
     '''
     self.loop.start()
-<<<<<<< HEAD
-    
-=======
 
     ### NOTE: when we figure out how to make this loopy, we should reset self.okays before we do this check every time we loop 
     self.okays.clear()
 
->>>>>>> 6ce1c5449224ca91e2eaa06c835ca46036ecbc21
     if self.leader == self.name:
       if (len(self.group.members) > MAX_GROUP): 
       #SPLITTING
@@ -252,6 +249,10 @@ class Node(object):
     elif typ == "COMMIT":
         #when this is committed and its a merge, make sure to pass on a new left or right group in paxos with a propose message
         self.req.send_json({"type": "PROPOSE", "destination": [self.group.leader], "key": msg["key"], "value": msg["value"]})
+
+    #--------- PAXOS messages ----------
+    elif typ in ["PROPOSE", "PREPARE", "ACCEPT", "ACCEPTED", "REJECTED", "LEARN"]:
+      self.handle_paxos(msg)
 
     elif typ == 'spam':
       self.req.send_json({'type': 'log', 'spam': msg})
