@@ -55,10 +55,10 @@ class Node(object):
     self.req.on_recv(self.handle_broker_message)
 
     self.name = node_name
-    
-    self.group = Group(key_range, peer_names[0], [x for x in peer_names], 1)  #group object
-    self.lgroup = Group(key_range1, pred_names[0], [x for x in pred_names], 1) #group object
-    self.rgroup = Group(key_range2, succ_names[0], [x for x in succ_names], 1) #group object
+    if key_range and key_range1 and key_range2:
+      self.group = Group((key_range[0], key_range[1]), peer_names[0], [x for x in peer_names], 1)  #group object
+      self.lgroup = Group((key_range1[0],key_range[1]), pred_names[0], [x for x in pred_names], 1) #group object
+      self.rgroup = Group((key_range2[0], key_range[1]), succ_names[0], [x for x in succ_names], 1) #group object
 
     self.store = dict()
 
@@ -142,6 +142,8 @@ class Node(object):
 
 
   def housekeeping(self):
+
+    print "housekeeping!"
     if self.pong:
       for dead_member in self.pong:
         proposal = {"type": "START", "destination": [self.group.leader], "source": self.name, 
@@ -229,11 +231,27 @@ class Node(object):
     print self.name , "recieved message: ", msg
     typ = msg['type']
 
-    if typ == "PING":
+    ######################
+    #### HELLO & SPAM ####
+    ######################
+    if typ == 'hello':
+      if not self.connected:
+        self.connected = True
+        self.req.send_json({'type': 'helloResponse', 'source': self.name})
+        # if we're a spammer, start spamming!
+        if self.spammer:
+          self.loop.add_callback(self.send_spam)
+      return
+
+    elif typ == 'spam':
+      self.req.send_json({'type': 'log', 'spam': msg})
+      return
+
+    elif typ == "PING":
       self.req.send_json({"type": "PONG", "destination": [msg["source"]], "source": self.name})
       return
 
-    if typ == "PONG":
+    elif typ == "PONG":
       if msg["source"] in self.pong:
         self.pong.remove(msg["source"])
       else:
@@ -261,19 +279,6 @@ class Node(object):
     #---------- MISC SETUP/FAILURE COMMANDS -----------#
     ####################################################
 
-    ######################
-    #### HELLO & SPAM ####
-    ######################
-    if typ == 'hello':
-      if not self.connected:
-        self.connected = True
-        self.req.send_json({'type': 'helloResponse', 'source': self.name})
-        # if we're a spammer, start spamming!
-        if self.spammer:
-          self.loop.add_callback(self.send_spam)
-
-    elif typ == 'spam':
-      self.req.send_json({'type': 'log', 'spam': msg})
 
     ####################################################
     #---------- DHT BASIC COMMANDS AND REQS -----------#
@@ -874,16 +879,16 @@ if __name__ == '__main__':
                       default='')
 
   parser.add_argument('--key-range', dest='key_range',
-                      type=str, default="0 16")
+                      type=str, default='')
 
   parser.add_argument('--pred-group', dest='pred_group', 
                       type=str, default='')
   parser.add_argument('--key-range1', dest='key_range1',
-                      type=str, default='16 32')
+                      type=str, default='')
   parser.add_argument('--succ-group', dest="succ_group",
                       type=str, default='')
   parser.add_argument('--key-range2', dest='key_range2',
-                      type=str, default='32 0')
+                      type=str, default='')
   args = parser.parse_args()
   args.peer_names = args.peer_names.split(',')
   args.pred_group = args.pred_group.split(',')
@@ -891,11 +896,6 @@ if __name__ == '__main__':
   args.key_range = args.key_range.split(',')
   args.key_range1 = args.key_range1.split(',')
   args.key_range2 = args.key_range2.split(',')
-  '''
-  args.key_range = (args.key_range[0],args.key_range[1])
-  args.key_range1 = (args.key_range1[0],args.key_range1[1])
-  args.key_range2 = (args.key_range2[0],args.key_range2[1])
-  '''
 
   Node(args.node_name, args.pub_endpoint, args.router_endpoint, args.spammer,
        args.peer_names, args.key_range, args.pred_group, args.key_range1, 
