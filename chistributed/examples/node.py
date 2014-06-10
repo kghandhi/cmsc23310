@@ -15,6 +15,12 @@ MIN_GROUP = 4
 #MAX_KEY = int('f'*128, 16)
 MAX_KEY = 16
 
+TWOPC_MESSAGES = ["START","START_PAXOSED", "READY","READY_PAXOSED", "YES","YES_PAXOSED",
+                       "NO","WAIT","COMMIT"]
+TWOPC_UNBLOCKED = ["START_PAXOSED", "READY_PAXOSED","YES_PAXOSED","WAIT"]
+
+PAXOS_MESSAGES = ["PROPOSE", "PREPARE", "ACCEPT", "ACCEPTED", "REJECTED", "LEARN"]
+
 
 class Group(object):
   def __init__(self, key_range, leader, members):
@@ -191,23 +197,18 @@ class Node(object):
     msg = json.loads(msg_frames[2])
     typ = msg['type']
 
-    if msg['type'] in ["PROPOSE", "PREPARE", "ACCEPT", "ACCEPTED", "REJECTED", "LEARN"]:
-      print "THIS IS A PAXOS MESSAGE"
+    if msg['type'] in PAXOS_MESSAGES:
       self.handle_paxos(msg)
       return
-    if msg['type'] in ["START","START_PAXOSED","READY","YES","NO","COMMIT"]:
-      print "THIS IS A 2PC MESSAGE"
+    if msg['type'] in TWOPC_MESSAGES:
       if self.name != self.group.leader:
-        #fwd to leader
         msg["destination"] = [self.group.leader]
         self.req.send_json(msg)
-        return
-      elif self.twoPC_contact != msg["source"]:
-        self.req.send_json({'type': 'WAIT', 'source': self.name})
-        return
+      elif self.BLOCK_2PC == None or self.BLOCK_2PC == (msg["parent"],msg["key"]) or msg["type"] in TWOPC_UNBLOCKED:
+        self.handle_2pc(msg) 
       else: 
-        self.handle_2pc(msg)
-        return
+        self.req.send_json({'type': 'WAIT', 'source': self.name,"key": msg["key"], "value": msg["value"]})
+      return
 
     ####################################################
     #---------- MISC SETUP/FAILURE COMMANDS -----------#
@@ -296,7 +297,7 @@ class Node(object):
             if self.group.p_num not in self.proposals:
                 self.proposals[self.group.p_num] = msg["value"]
             for member in self.accs:
-                new_msg = make_paxos_msg("PREPARE", [member], [self.name], key, msg["value"], self.group.p_num, None)
+                new_msg = make_paxos_msg("PREPARE", [member], [self.name], key, msg["value"], self.group.p_num, None, msg["parent"])
                 self.req.send_json(new_msg)
             self.promises[self.group.p_num] = []
             self.group.p_num += 1
@@ -313,7 +314,7 @@ class Node(object):
                 pick_tup = sorted(self.promises[n], key-lambda x: x[1])[0]
                 
                 for member in self.accs:
-                    new_msg = make_paxos_msg("ACCEPT", [member], [self.name], key, msg["value"], n, None)
+                    new_msg = make_paxos_msg("ACCEPT", [member], [self.name], key, msg["value"], n, None, msg["parent"])
                     self.req.send_json(new_msg)
                 
         elif typ == "REJECTED":
@@ -326,7 +327,7 @@ class Node(object):
                 if self.group.p_num not in self.proposals: 
                     self.proposals[self.group.p_num] = msg["value"]
                 for member in self.accs:
-                    new_msg = make_paxos_msg("PREPARE", [member], [self.name], key, msg["value"], self.group.p_num, None)
+                    new_msg = make_paxos_msg("PREPARE", [member], [self.name], key, msg["value"], self.group.p_num, None, msg["parent"])
                     self.req.send_json(new_msg)
                 self.promises[self.group.p_num] = []
                 self.group.p_num += 1
@@ -351,7 +352,7 @@ class Node(object):
                                             "source": [self.name], "value": msg["value"], "key": key})
                     else:
                         for member in self.accs:
-                            new_msg = make_paxos_msg("LEARN", [member], [self.name], key, msg["value"], n, None)
+                            new_msg = make_paxos_msg("LEARN", [member], [self.name], key, msg["value"], n, None, msg["parent"])
                             self.req.send_json(new_msg)
                         
         elif typ == "REDIRECT":
@@ -359,7 +360,7 @@ class Node(object):
                 self.redirects[key] = []
             if n not in self.redirects[key]:
                 self.redirects[key].append(n)
-                new_msg = make_paxos_msg("PROPOSE", msg["source"], [self.name], key, msg["value"], n, None)
+                new_msg = make_paxos_msg("PROPOSE", msg["source"], [self.name], key, msg["value"], n, None, msg["parent"])
         else:
             print "This is not the typ eof message a proposer should be recieving"
     else:
@@ -374,16 +375,16 @@ class Node(object):
                 else:
                     high_p = None
                     self.n_int[key] = n
-                new_msg = make_paxos_msg("PROMISE", msg["source"], [self.name], msg["value"], n, high_p)
+                new_msg = make_paxos_msg("PROMISE", msg["source"], [self.name], msg["value"], n, high_p, msg["parent"])
                 self.req.send_json(new_msg)
         elif typ == "ACCEPT":
             if self.n_int[key] <= n:
-                new_msg = make_paxos_msg("ACCEPTED", msg["source"], [self.name], msg["value"], n, None) 
+                new_msg = make_paxos_msg("ACCEPTED", msg["source"], [self.name], msg["value"], n, None, msg["parent"]) 
                 if key not in self.acced:
                     self.acced[key] = []
                 self.acced[key].append((msg["value"], n))
             else:
-                new_msg = make_paxos_msg("REJECTED", msg["source"], self.name, msg["value"], n, None)
+                new_msg = make_paxos_msg("REJECTED", msg["source"], self.name, msg["value"], n, None, msg["parent"])
             self.req.send_json(new_msg)
                                       
         elif typ == "LEARN":
@@ -617,9 +618,9 @@ class Node(object):
     self.req_sock.close()
     sys.exit(0)
 
-def make_paxos_msg(typ, dst, src, key, value, p_num, prior_proposal):
+def make_paxos_msg(typ, dst, src, key, value, p_num, prior_proposal,parent):
     return {"type": typ, "destination": dst, "source": src, "key": key, "value": value, 
-            "p_num": p_num, "prior_proposal": prior_proposal}
+            "p_num": p_num, "prior_proposal": prior_proposal, "parent":parent}
 
 if __name__ == '__main__':
   import argparse
