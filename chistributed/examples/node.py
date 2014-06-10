@@ -11,7 +11,6 @@ from zmq.eventloop import ioloop, zmqstream
 ioloop.install()
 sys.stdout = open("logging", 'w')
 
-
 MAX_GROUP = 10
 MIN_GROUP = 4
 #MAX_KEY = int('f'*128, 16)
@@ -26,11 +25,15 @@ PAXOS_MESSAGES = ["PROPOSE", "PREPARE", "ACCEPT", "ACCEPTED", "REJECTED", "LEARN
 
 class Group(object):
   def __init__(self, key_range, leader, members, p_num):
-    self.key_range = key_range
+    self.key_range = key_range #tuple [a,b)
     self.leader = leader
     self.leaderLease = dt.now()
     self.members = members
     self.p_num = p_num #initially 1
+
+  def __repr__(self):
+    return "key_range=[{},{}), leader={}, p_num={}\n members={}".format(self.key_range[0], self.key_range[1], self.leader, self.p_num, self.members)
+    print "members={}".format(self.members)
     
 class Node(object):
   def __init__(self, node_name, pub_endpoint, router_endpoint, spammer, peer_names, 
@@ -55,10 +58,14 @@ class Node(object):
     self.req.on_recv(self.handle_broker_message)
 
     self.name = node_name
-    if key_range and key_range1 and key_range2:
-      self.group = Group((key_range[0], key_range[1]), peer_names[0], [x for x in peer_names], 1)  #group object
-      self.lgroup = Group((key_range1[0],key_range[1]), pred_names[0], [x for x in pred_names], 1) #group object
-      self.rgroup = Group((key_range2[0], key_range[1]), succ_names[0], [x for x in succ_names], 1) #group object
+    # if key_range and key_range1 and key_range2:
+    #   print key_range, key_range1, key_range2
+    #   print key_range[0]
+    self.group = Group((key_range[0], key_range[1]), 
+                       peer_names[0], peer_names, 1)  #group object
+   
+    self.lgroup = Group((key_range1[0],key_range1[1]), pred_names[0], pred_names, 1) #group object
+    self.rgroup = Group((key_range2[0], key_range2[1]), succ_names[0], succ_names, 1) #group object
 
     self.store = dict()
 
@@ -137,6 +144,9 @@ class Node(object):
     the message queue whenever possible.
     '''
     print "I AM ALIVE"
+    print self.group
+    print self.rgroup
+    print self.lgroup
     self.loop.start()
     self.loop.add_timeout(time.time() + TIME_LOOP, lambda: self.housekeeping())
 
@@ -890,6 +900,7 @@ if __name__ == '__main__':
   parser.add_argument('--key-range2', dest='key_range2',
                       type=str, default='')
   args = parser.parse_args()
+  print str(len(args.key_range.split(',')))
   args.peer_names = args.peer_names.split(',')
   args.pred_group = args.pred_group.split(',')
   args.succ_group = args.succ_group.split(',')
