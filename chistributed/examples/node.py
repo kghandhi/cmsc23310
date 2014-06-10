@@ -224,7 +224,9 @@ class Node(object):
     assert len(msg_frames) == 3
     assert msg_frames[0] == self.name
     # Second field is the empty delimiter
+
     msg = json.loads(msg_frames[2])
+    print self.name , "recieved message: ", msg
     typ = msg['type']
 
     if typ == "PING":
@@ -889,6 +891,11 @@ if __name__ == '__main__':
   args.key_range = args.key_range.split(',')
   args.key_range1 = args.key_range1.split(',')
   args.key_range2 = args.key_range2.split(',')
+  '''
+  args.key_range = (args.key_range[0],args.key_range[1])
+  args.key_range1 = (args.key_range1[0],args.key_range1[1])
+  args.key_range2 = (args.key_range2[0],args.key_range2[1])
+  '''
 
   Node(args.node_name, args.pub_endpoint, args.router_endpoint, args.spammer,
        args.peer_names, args.key_range, args.pred_group, args.key_range1, 
