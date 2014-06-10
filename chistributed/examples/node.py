@@ -57,9 +57,7 @@ class Node(object):
     self.req.on_recv(self.handle_broker_message)
 
     self.name = node_name
-    # if key_range and key_range1 and key_range2:
-    #   print key_range, key_range1, key_range2
-    #   print key_range[0]
+   
     self.group = Group((key_range[0], key_range[1]), peer_names[0], peer_names, 1)  #group object   
     self.lgroup = Group((key_range1[0],key_range1[1]), pred_names[0], pred_names, 1) #group object
     self.rgroup = Group((key_range2[0], key_range2[1]), succ_names[0], succ_names, 1) #group object
@@ -200,33 +198,37 @@ class Node(object):
     '''
     pass
 
-  def forwardTo(self, k):
-
-    lBound = self.group.key_range[0]
-    rBound = self.group.key_range[1]
-    print lBound,rBound
-    # L < R
-    if ( lBound < rBound):
-      if lBound < k and k < rBound:
+  def forwardTo(self, key):
+    lbound = self.group.key_range[0]
+    rbound = self.group.key_range[1]
+    if (lbound < rbound):
+      if lbound <= key and key < rbound:
         if self.group.leader:
           return self.group.leader
         else:
           return self.name
-      elif k < lBound and k < rBound:
-        return group.pred_g.leader
-      elif rBound < k and lBound < k:
-        return group.succ_g.leader
+      elif key < lbound:
+        if abs(key - lbound) > key + (MAX_KEY - rbound):
+          return self.rgroup.leader
+        else:
+          return self.lgroup.leader
+      elif key >= rbound:
+        if (MAX_KEY - key) + lbound < abs(rbound - key):
+          return self.lgroup.leader
+        else:
+          return self.rgroup.leader
       else:
-        raise Exception("Key range does not exist")
-    elif ( rBound < lBound):
-      if lBound < k and k < MAX_KEY:
-        return group.leader
-      elif MIN_KEY < k and k < rBound:
-        return group.pred_g.leader
-      elif rBound < k and k < lBound:
-        return group.succ_g.leader
+        raise Exception("This may be a problem with hashing if the key isnt between 0 and max")
+    elif (rbound < lbound):
+      if (lbound <= key and key <= MAX_KEY) or (MIN_KEY <= key and key < rbound) :
+        return self.group.leader
       else:
-        raise Exception("Key range does not exist")
+        if abs(key - rbound) > abs(key - lbound):  
+          return self.lgroup.leader
+        else:
+          return self.rgroup.leader
+    else:
+      raise Exception("The key_range is Zero")
 
   def groupInfo_from_leader(self, leader):
     if self.rgroup.leader == leader:
@@ -479,10 +481,16 @@ class Node(object):
             
         elif typ == "LEARN":
           if key == "ELECTION":
-            self.group.leader = msg["value"]
-            self.group.leaderLease = dt.now() + LEADER_LEASE_TIME
+            if msg["which"]: 
+              if msg["which"] == "right":
+                self.rgroup.leader = msg["value"]
+              elif msg["which"] == "left":
+                self.lgroup.leader = msg["value"]
+            else:
+              self.group.leader = msg["value"]
+              self.group.leaderLease = dt.now() + LEADER_LEASE_TIME
             
-            del self.acced["ELECTION"]
+              del self.acced["ELECTION"]
     
           elif key == "GROUPS":
             self.lgroup = msg["value"][0]
@@ -794,9 +802,9 @@ class Node(object):
                                                         "destination":[self.group.leader], 
                                                         "source": self.name, "key": msg["key"], 
                                                         "value": msg["value"]}))
-                     ################
-                     #### COMMIT ####
-                     ################
+  ################
+  #### COMMIT ####
+  ################
     elif typ == "COMMIT":
 
       self.req.send_json({"parent":  msg["parent"] ,"destination": [ msg["source"] ], "source": self.name, 
