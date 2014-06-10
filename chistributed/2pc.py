@@ -1,7 +1,5 @@
    def handle_2pc(self, msg):
 
-
-
      typ = msg["type"]
      if typ == "START":
         #START PAXOS ON INTERPROCESS (keys: MERGE_REQ, MERGE_ID, SPLIT, value:START)
