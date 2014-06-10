@@ -1,10 +1,10 @@
+from __future__ import division
 import json
 import sys
 import signal
 import zmq
 import time
 import math
-from __future__ import division
 from datetime import datetime as dt
 from datetime import timedelta
 from zmq.eventloop import ioloop, zmqstream
@@ -62,7 +62,7 @@ class Node(object):
 
     self.store = dict()
 
-    self.BLOCK_2PC
+    self.BLOCK_2PC = None
 
     # Liveness queues
     self.pending_reqs = []
@@ -88,7 +88,6 @@ class Node(object):
     for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
       signal.signal(sig, self.shutdown)
 
-  def initialize_groups
   def handle_split(self):
     old_key = self.group.key_range
     b = long(old_key[1])
@@ -137,6 +136,7 @@ class Node(object):
     Simple manual poller, dispatching received messages and sending those in
     the message queue whenever possible.
     '''
+    print "I AM ALIVE"
     self.loop.start()
     self.loop.add_timeout(time.time() + TIME_LOOP, lambda: self.housekeeping())
 
@@ -178,7 +178,7 @@ class Node(object):
 
     self.pong = [mem for mem in self.group.members]
     for mem in self.pong:
-      ping = {"type": "PING": "destination": [mem], "source": self.name}
+      ping = {"type": "PING", "destination": [mem], "source": self.name}
 
     self.loop.add_timeout(time.time() + TIME_LOOP, lambda: self.housekeeping())
 
@@ -224,7 +224,9 @@ class Node(object):
     assert len(msg_frames) == 3
     assert msg_frames[0] == self.name
     # Second field is the empty delimiter
+
     msg = json.loads(msg_frames[2])
+    print self.name , "recieved message: ", msg
     typ = msg['type']
 
     if typ == "PING":
@@ -306,7 +308,7 @@ class Node(object):
     #############
     #### SET ####
     #############
-    elif typ = 'set' or typ = 'setRelay':
+    elif typ == 'set' or typ == 'setRelay':
       k = msg['key']
       v = msg['value']
       self.pending_req.append(("set", k, v))
@@ -320,7 +322,7 @@ class Node(object):
         self.req.send_json({'type': 'setResponse', 'id': msg['id'], 'value': v}) 
       else:
         self.req.send_json({'type' : 'setRelay', 'destination': [dest],'id' : msg['id'], 
-                            'key': msg['key'], 'value' = msg['value']})
+                            'key': msg['key'], 'value' : msg['value']})
         
       if typ == "setRelay":
         self.req.send_json({"type": "SET_ACK", "destination": [msg["source"]], 
@@ -345,7 +347,7 @@ class Node(object):
           self.proposals[self.group.p_num] = msg["value"]
           for member in self.accs:
             new_msg = make_paxos_msg("PREPARE", [member], self.name, key, msg["value"], 
-                                     self.group.p_num, None, msg["parent"], "who": msg["who"])
+                                     self.group.p_num, None, msg["parent"], msg["who"])
             self.req.send_json(new_msg)
             self.promises[self.group.p_num] = []
             self.group.p_num += 1
@@ -359,11 +361,11 @@ class Node(object):
               self.promises[n].append((msg["value"], n))
 
             if (len(self.promises[n]) == majority):
-              pick_tup = sorted(self.promises[n], key-lambda x: x[1])[0]
+              pick_tup = sorted(self.promises[n], key=lambda x: x[1])[0]
               
               for member in self.accs:
                 new_msg = make_paxos_msg("ACCEPT", [member], self.name, key, msg["value"], 
-                                         n, None, msg["parent"], "who": msg["who"])
+                                         n, None, msg["parent"], msg["who"])
                 self.req.send_json(new_msg)
                 
         elif typ == "REJECTED":
@@ -377,7 +379,7 @@ class Node(object):
                 self.proposals[self.group.p_num] = msg["value"]
                 for member in self.accs:
                   new_msg = make_paxos_msg("PREPARE", [member], self.name, key, msg["value"], 
-                                           self.group.p_num, None, msg["parent"], "who": msg["who"])
+                                           self.group.p_num, None, msg["parent"], msg["who"])
                   self.req.send_json(new_msg)
                 self.promises[self.group.p_num] = []
                 self.group.p_num += 1
@@ -412,7 +414,7 @@ class Node(object):
             if n not in self.redirects[key]:
               self.redirects[key].append(n)
               new_msg = make_paxos_msg("PROPOSE", [msg["source"]], self.name, key, msg["value"], 
-                                       n, None, msg["parent"], "who": msg["who"])
+                                       n, None, msg["parent"], msg["who"])
         else:
           print "This is not the typ eof message a proposer should be recieving"
     else:
@@ -428,18 +430,18 @@ class Node(object):
               high_p = None
               self.n_int[key] = n
               new_msg = make_paxos_msg("PROMISE", [msg["source"]], self.name, msg["value"], 
-                                       n, high_p, msg["parent"], "who": msg["who"])
+                                       n, high_p, msg["parent"], msg["who"])
               self.req.send_json(new_msg)
         elif typ == "ACCEPT":
           if self.n_int[key] <= n:
             new_msg = make_paxos_msg("ACCEPTED", [msg["source"]], self.name, msg["value"], 
-                                     n, None, msg["parent"], "who": msg["who"]) 
+                                     n, None, msg["parent"], msg["who"]) 
             if key not in self.acced:
               self.acced[key] = []
               self.acced[key].append((msg["value"], n))
             else:
               new_msg = make_paxos_msg("REJECTED", [msg["source"]], self.name, msg["value"], 
-                                       n, None, msg["parent"], "who": msg["who"])
+                                       n, None, msg["parent"], msg["who"])
             self.req.send_json(new_msg)
             
         elif typ == "LEARN":
@@ -825,7 +827,7 @@ class Node(object):
         elif msg["key"] == "ADD_OTHER" or msg["key"] == "DROP_OTHER":
 
           learn_msg = ({  "parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, 
-                          "type": "LEARN", "key": msg["key"], "value": (msg["value"]). "which" : msg["which"] })
+                          "type": "LEARN", "key": msg["key"], "value": (msg["value"]), "which" : msg["which"] })
           self.req.send_json(learn_msg)
     else:
       raise Exception("wow how did that happen")
@@ -842,7 +844,7 @@ class Node(object):
                           'source': self.name, 'destination': self.peer_names, 'value': 42})
       self.loop.add_timeout(t + 1, self.send_spam)
 
-      def shutdown(self, sig, frame):
+  def shutdown(self, sig, frame):
         self.loop.stop()
         self.sub_sock.close()
         self.req_sock.close()
@@ -889,6 +891,11 @@ if __name__ == '__main__':
   args.key_range = args.key_range.split(',')
   args.key_range1 = args.key_range1.split(',')
   args.key_range2 = args.key_range2.split(',')
+  '''
+  args.key_range = (args.key_range[0],args.key_range[1])
+  args.key_range1 = (args.key_range1[0],args.key_range1[1])
+  args.key_range2 = (args.key_range2[0],args.key_range2[1])
+  '''
 
   Node(args.node_name, args.pub_endpoint, args.router_endpoint, args.spammer,
        args.peer_names, args.key_range, args.pred_group, args.key_range1, 
