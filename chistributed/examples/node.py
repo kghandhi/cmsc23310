@@ -389,17 +389,20 @@ class Node(object):
                                       
         elif typ == "LEARN":
             if key == ELECTION_ID:
-                self.group.leader = msg["value"]
-                self.leaderLease = dt.now() + LEADER_LEASE_TIME
-                del self.acced[ELECTION_ID]
+              self.group.leader = msg["value"]
+              self.leaderLease = dt.now() + LEADER_LEASE_TIME
+              del self.acced[ELECTION_ID]
             elif key == ADD_ID:
-                pass
+              pass
             elif key == "GROUPS":
-                self.lgroup = msg["value"][0]
-                self.group = msg["value"][1]
-                self.rgroup = msg["value"][2]
-                self.store = self.store.extend(msg["store"]) 
-           
+              self.lgroup = msg["value"][0]
+              self.group = msg["value"][1]
+              self.rgroup = msg["value"][2]
+              self.store = self.store.extend(msg["store"]) 
+            elif key == "BLOCK":
+              self.BLOCK_2PC = (msg["parent"], msg["value"])
+            elif key == "UNBLOCK":
+              self.BLOCK_2PC = None
             else:
                 self.store[long(key)] = msg["value"]
         else:
