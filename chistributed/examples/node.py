@@ -9,6 +9,8 @@ from datetime import datetime as dt
 from datetime import timedelta
 from zmq.eventloop import ioloop, zmqstream
 ioloop.install()
+sys.stdout = open("logging", 'w')
+
 
 MAX_GROUP = 10
 MIN_GROUP = 4
