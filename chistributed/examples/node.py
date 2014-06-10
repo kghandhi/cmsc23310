@@ -540,7 +540,8 @@ class Node(object):
            new_msg = {"type": "READY", "destination": [dest], "source": [self.name], "key": "MERGE", "value": "MERGE_REQ"}
            self.req.send_json(new_msg)
          elif msg["value"] == "MERGE_FWD":
-           new_msg = {"type": "YES", "destination": [dest], "source": [self.name], "key": "MERGE", "value": "MERGE_REQ", "newNeighbor" : groupInfo, "store" : self.store}
+           new_msg = {"type": "YES", "destination": [dest], "source": [self.name], "key": "MERGE", 
+                      "value": "MERGE_REQ", "newNeighbor" : groupInfo, "store" : self.store}
            self.req.send_json(new_msg)
                  
 
@@ -548,7 +549,8 @@ class Node(object):
     ###### NO & WAIT ######
     #######################
      elif typ == "NO" or typ == "WAIT":
-       self.loop.add_timeout(time.time() + .5, lambda: self.req.send_json({"type": "START", "destination":[self.group.leader], "source": [self.name], "key": msg["key"], "value": msg["value"]}))
+       self.loop.add_timeout(time.time() + .5, lambda: self.req.send_json({"type": "START", "destination":[self.group.leader], 
+                                                                           "source": [self.name], "key": msg["key"], "value": msg["value"]}))
     ################
     #### COMMIT ####
     ################
@@ -557,9 +559,11 @@ class Node(object):
        if msg["key"] == "SPLIT":
           #response = {"destination": msg["source"], "source": [self.name], "type" : "YES", "key": "SPLIT", "value": "SPLIT"}
          if msg["which"] == "yourRight":
-           learn_msg1 = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", "key": "GROUPS", "value": (self.lgroup, self.group , msg["value"]), "store" : {}})
+           learn_msg1 = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", 
+                          "key": "GROUPS", "value": (self.lgroup, self.group , msg["value"]), "store" : {}})
          elif msg["which"] == "yourLeft":
-           learn_msg1 = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", "key": "GROUPS", "value": (msg["value"], self.group , self.rgroup), "store" : {}})
+           learn_msg1 = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", 
+                          "key": "GROUPS", "value": (msg["value"], self.group , self.rgroup), "store" : {}})
          else:
            print "SPLIT COMMIT ILLFORMED - which is messed"
 
@@ -567,22 +571,27 @@ class Node(object):
 
          if msg["value"] == "MERGE_ID":
            if which == "leftMerge":
-             learn_msg = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", "key": "GROUPS", "value": (msg["value"],self.group,self.rgroup), "store" : {}})
+             learn_msg = ({"destination": self.group.members, "source" : [self.name], 
+                           "type": "LEARN", "key": "GROUPS", "value": (msg["value"],self.group,self.rgroup), "store" : {}})
            elif which == "rightMerge":
-             learn_msg = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", "key": "GROUPS", "value": (self.lgroup, self.group, msg["value"]), "store" : {}})
+             learn_msg = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", 
+                           "key": "GROUPS", "value": (self.lgroup, self.group, msg["value"]), "store" : {}})
            else:
              print "Commit illformed w/o which field"
              self.req.send_json(learn_msg)    
 
          elif msg["value"] == "MERGE_REQ":
-           learn_msg = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", "key": "GROUPS", "value": (msg["value"]), "store" : msg["store"]})
+           learn_msg = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", 
+                         "key": "GROUPS", "value": (msg["value"]), "store" : msg["store"]})
            self.req.send_json(learn_msg)       
 
          elif msg["value"] == "MERGE_FWD":
            if which == "rightMerge":
-             learn_msg = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", "key": "GROUPS", "value": (msg["value"],self.group,self.rgroup), "store" : {}})
+             learn_msg = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", 
+                           "key": "GROUPS", "value": (msg["value"],self.group,self.rgroup), "store" : {}})
            elif which == "leftMerge":
-             learn_msg = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", "key": "GROUPS", "value": (self.lgroup, self.group, msg["value"]), "store" : {}})
+             learn_msg = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", "key": "GROUPS", 
+                           "value": (self.lgroup, self.group, msg["value"]), "store" : {}})
            else:
              print "Commit illformed w/o which field"
              self.req.send_json(learn_msg)
@@ -595,7 +604,8 @@ class Node(object):
       self.spam_count = 0
     self.spam_count += 1
     t = self.loop.time()
-    self.req.send_json({'type': 'spam', 'id': self.spam_count, 'timestamp': t, 'source': self.name, 'destination': self.peer_names, 'value': 42})
+    self.req.send_json({'type': 'spam', 'id': self.spam_count, 'timestamp': t, 
+                        'source': self.name, 'destination': self.peer_names, 'value': 42})
     self.loop.add_timeout(t + 1, self.send_spam)
 
   def shutdown(self, sig, frame):
