@@ -25,7 +25,7 @@ class Group(object):
     
 
 class Node(object):
-  def __init__(self, node_name, pub_endpoint, router_endpoint, spammer, peer_names):
+  def __init__(self, node_name, pub_endpoint, router_endpoint, spammer, peer_names, pred_names, succ_names):
     self.loop = ioloop.ZMQIOLoop.instance()
     self.context = zmq.Context()
 
@@ -46,7 +46,6 @@ class Node(object):
     self.req.on_recv(self.handle_broker_message)
 
     self.name = node_name
-    self.key = None #should be a key range tuple (lb, ub]
     
     self.lgroup = None #group object
     self.rgroup = None #group object
@@ -377,6 +376,7 @@ class Node(object):
                 self.lgroup = msg["value"][0]
                 self.group = msg["value"][1]
                 self.rgroup = msg["value"][2]
+                self.store = self.store.extend(msg["store"]) 
            
             else:
                 self.store[long(key)] = msg["value"]
@@ -424,6 +424,7 @@ if __name__ == '__main__':
       default='')
   args = parser.parse_args()
   args.peer_names = args.peer_names.split(',')
-
-  Node(args.node_name, args.pub_endpoint, args.router_endpoint, args.spammer, args.peer_names).start()
+  args.pred_group = args.prev_group.split(',')
+  args.succ_group = args.succ_group.split(',')
+  Node(args.node_name, args.pub_endpoint, args.router_endpoint, args.spammer, args.peer_names, args.pred_group, args.succ_group).start()
 
