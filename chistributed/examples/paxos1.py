@@ -29,6 +29,7 @@ def handle_paxos(msg):
     typ = msg["type"]
     key = msg["key"]
     n = msg["p_num"]
+    self.accs = [m for m in self.group.members if m != self.name]
     if self.group.leader == self.name:
         if typ == "PROPOSE":        
             if self.group.p_num not in self.proposals:
