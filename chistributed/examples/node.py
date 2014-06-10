@@ -4,6 +4,7 @@ import signal
 import zmq
 import time
 import math
+from __future__ import division
 from datetime import datetime as dt
 from datetime import timedelta
 from zmq.eventloop import ioloop, zmqstream
@@ -22,15 +23,6 @@ class Group(object):
     self.members = members
     self.p_num = 1
     
-  def handle_merge(self, other):
-    pass
-
-  def handle_add_node():
-    pass
-
-  def handle_drop_node():
-    pass
-
 
 class Node(object):
   def __init__(self, node_name, pub_endpoint, router_endpoint, spammer, peer_names):
@@ -60,23 +52,31 @@ class Node(object):
     self.rgroup = None #group object
     self.group = None #group object
     
-    self.store = {}
-    self.values = {}
+    self.store = dict()
     
     self.leader = None
-    self.leaderLease = dt.now
-    self.proposer = None
-    self.acceptor = None
+    self.leaderLease = dt.now()
 
     self.spammer = spammer
-    self.peer_names = peer_names
+    self.peer_names = peer_names #eventually this will be our group
     self.okays = {} #dictionary of okays received hashed on "MERGE": (merge_type, source) or "SPLIT": int
   
+    # Acceptor Attributes:
+    self.n_int = dict() #highest prepare requests responded to hashed on the key
+    self.acced = dict() #tuple values (value, n) hashed on key
+
+    # Proposer Attributes:
+    self.accs = [] #defined inside handle_paxos, redefined whenever we get a paxos message
+    self.proposals = dict() #dictionary of proposals
+    self.promises = dict() #lists of promises hashed on p_num
+    self.rejects = dict() #(value, n) of rejected msgs hashed on n
+    self.accepts = dict() #(value, n) of accepted msgs hashed on n
+    self.props_accepted = dict() #concensus values indexed by n (proposed, accepted) tuples
+    self.redirects = dict() #dictionary of dictionaries...
+
     for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
       signal.signal(sig, self.shutdown)
 
-  def handle_join():
-    pass
 
   def handle_split(self):
     old_key = self.group.key_range
@@ -201,10 +201,12 @@ class Node(object):
         msg["destination"] = [self.group.leader]
         self.req.send_json(msg)
         return
-      if self.twoPC_contact != msg["source"]:
+      elif self.twoPC_contact != msg["source"]:
         self.req.send_json({'type': 'WAIT', 'source': self.name})
         return
-
+      else: 
+        self.handle_2pc(msg)
+        return
 
     ####################################################
     #---------- MISC SETUP/FAILURE COMMANDS -----------#
@@ -262,154 +264,124 @@ class Node(object):
       else:
         self.req.send_json({'type' : 'setRelay', 'destination': [dest],'id' : msg['id'], 'key': msg['key'], 'value' = msg['value']})
         
-    ##################################################
-    #---------- Two Phase Commit Handling -----------#
-    ##################################################
 
-    #######################
-    #### START + PAXOS ####
-    #######################
-    elif typ == "START":
-        #START PAXOS ON INTERPROCESS (keys: MERGE_REQ, MERGE_ID, SPLIT, value:START)
-        #ONCE PAXOS FINISHED, SEND READY ( in )
-        #BLOCK
-        self.req.send_json({"destination": [self.group.leader], "type": "PROPOSE", "key": "START", "value": ,msg["value"]})
+  def handle_paxos(self, msg):
+    majority = math.ceil(len(self.group.members) / 2)
+    typ = msg["type"]
+    key = msg["key"]
+    n = msg["p_num"]
+    self.accs = [m for m in self.group.members if m != self.name]
+    if self.group.leader == self.name:
+        if typ == "PROPOSE":        
+            if self.group.p_num not in self.proposals:
+                self.proposals[self.group.p_num] = msg["value"]
+            for member in self.accs:
+                new_msg = make_paxos_msg("PREPARE", [member], [self.name], key, msg["value"], self.group.p_num, None)
+                self.req.send_json(new_msg)
+            self.promises[self.group.p_num] = []
+            self.group.p_num += 1
 
-    elif typ == "START_PAXOSED":
-      #IN LEARN PHASE, SEND_PAXOSED to LEADER
-      #type start_paxosed, key start, value split,merge_id
+        elif typ == "PROMISE":
+            if n not in self.promises:
+                self.promises[n] = [] #this actually should be an error
+            if (msg["prior_proposal"]):
+                self.promises[n].append(msg["prior_proposal"])
+            else:
+                self.promises[n].append((msg["value"], n))
 
-      if msg["value"] == "SPLIT_ID":
-        new_msg = {"type": "READY", "destination": [self.lgroup.leader], "source": [self.name], "key": "SPLIT", "value": "SPLIT_ID"}
-        self.req.send_json(new_msg)
-        new_msg["destination"] = [self.rgroup.leader]
-        self.req.send_json(new_msg)
+            if (len(self.promises[n]) == majority):
+                pick_tup = sorted(self.promises[n], key-lambda x: x[1])[0]
+                
+                for member in self.accs:
+                    new_msg = make_paxos_msg("ACCEPT", [member], [self.name], key, msg["value"], n, None)
+                    self.req.send_json(new_msg)
+                
+        elif typ == "REJECTED":
+            if n in self.rejects:
+                self.rejects[n].append((msg["value"], n))
+            else:
+                self.rejects[n] = [(msg["value"], n)]
 
-      elif msg["key"] == "MERGE_ID":
-        if len(self.group.members) + len(self.lgroup.members) < MAX_GROUP and len(self.lgroup.members) < len(self.rgroup.members):
-           #new_msg1 = {"type": "READY", "destination": [self.lgroup.leader], "source": [self.name], "key": "MERGE_REQ", "value": "READY"}
-           new_msg2 = {"type": "READY", "destination": [self.rgroup.leader], "source": [self.name], "key": "MERGE_ID", "value": "READY"}
-        elif len(self.group.members) + len(self.rgroup.members) < MAX_GROUP :
-           #new_msg1 = {"type": "READY", "destination": [self.rgroup.leader], "source": [self.name], "key": "MERGE_REQ", "value": "READY"}
-           new_msg2 = {"type": "READY", "destination": [self.lgroup.leader], "source": [self.name], "key": "MERGE_ID", "value": "READY"}
+            if (len(self.rejects[n]) == majority):
+                if self.group.p_num not in self.proposals: 
+                    self.proposals[self.group.p_num] = msg["value"]
+                for member in self.accs:
+                    new_msg = make_paxos_msg("PREPARE", [member], [self.name], key, msg["value"], self.group.p_num, None)
+                    self.req.send_json(new_msg)
+                self.promises[self.group.p_num] = []
+                self.group.p_num += 1
+                
+        elif typ == "ACCEPTED":
+            if n in self.accepts:
+                self.accepts[n].append((msg["value"], n))
+            else:
+                self.accepts[n] = [(msg["value"], n)]
+
+            if (len(self.accepts[n]) == majority):
+                if n not in self.props_accepted:
+                    self.props_accepted[msg.n] = (self.proposals[n], msg["value"])
+                    if key == "START":
+                        self.req.send_json({"type": "START_PAXOSED", "destination": [self.group.leader], 
+                                            "source": [self.name], "value": msg["value"], "key": key})
+                    elif key == "READY":
+                        self.req.send_json({"type": "READY_PAXOSED", "destination": [self.group.leader], 
+                                            "source": [self.name], "value": msg["value"], "key": key})
+                    elif key == "YES":
+                        self.req.send_json({"type": "YES_PAXOSED", "destination": [self.group.leader], 
+                                            "source": [self.name], "value": msg["value"], "key": key})
+                    else:
+                        for member in self.accs:
+                            new_msg = make_paxos_msg("LEARN", [member], [self.name], key, msg["value"], n, None)
+                            self.req.send_json(new_msg)
+                        
+        elif typ == "REDIRECT":
+            if key not in self.redirects:
+                self.redirects[key] = []
+            if n not in self.redirects[key]:
+                self.redirects[key].append(n)
+                new_msg = make_paxos_msg("PROPOSE", msg["source"], [self.name], key, msg["value"], n, None)
         else:
-          #dont merge
-          return
-
-        #self.req.send_json(new_msg1)
-        self.req.send_json(new_msg2)
-
-    elif typ == "READY":
-      pass
-
-    elif typ == "READY_PAXOSED":
-      pass
-
-    elif typ == "YES":
-      #type yes, key split,merge, val split,merge_id,merge_req,merge_fwd
-      if msg["key"] == "MERGE_REQ":
-        if msg["source"][0] == self.lgroup.leader:
-          self.group = merge("left")
-          self.lgroup = msg["newNeighbor"]
-          neighbor = self.rgroup.leader
-          which = "leftMerge"
-
-        elif msg["source"][0] == self.rgroup.leader:
-          self.group = merge("right")
-          self.rgroup = msg["newNeighbor"]
-          neighbor = self.lgroup.leader
-          which = "rightMerge"
-        else:
-          print "NOT LEADER OF GROUP??"
-          neighbor = None
-          pass
-  
-
-        learn_msg = ({"destination": self.group.members, "source" : [self.name], "type": "LEARN", "key": "GROUPS", "value": (self.lgroup,self.group,self.rgroup)})
-        self.req.send_json(learn_msg)
-
-        commit_msg = ({"destination": msg["source"], "type": "COMMIT", "key": "MERGE_REQ", "value": (self.lgroup,self.group,self.rgroup)})
-        self.req.send_json(commit_msg)
-
-        neighbor_msg = ({"destination": [neighbor], "type": "COMMIT", "key": "MERGE_ID","which": which, "value": (self.group)})
-        self.req.send_json(neighbor_msg)
-
-        neighbor2_msg = ({"destination": [neighbor], "type": "COMMIT", "key": "MERGE_FWD","which": which, "value": (self.group)})
-        self.req.send_json(neighbor2_msg)
-
-      else:
-        self.req.send_json({"destination": [self.group.leader], "type": "PROPOSE", "key": "YES","value": msg["value"]})
-
-    elif typ == "YES_PAXOSED":
-      if msg["key"] == "SPLIT":
-        ###############################33
-        #################################33
-        #################################
-        # IF 2nd YES....
-        # SEND LEFT NEIGHBOR LEFT GROUP
-        # SEND RIGHT NEIGHBOR RIGHT GROUP
-        # SPLIT AND UPDATE INTERNAL GROUPS
-        pass
-      elif msg["key"] == "MERGE_ID":
-        new_msg = {"type": "READY", "destination": [self.lgroup.leader], "source": [self.name], "key": "MERGE", "value": "MERGE_REQ"}
-        self.req.send_json(new_msg)
-
-      elif msg["key"] == "MERGE_FWD":
-        if msg["source"][0] == self.rgroup.leader:
-          groupInfo = self.rgroup
-          dest = self.lgroup.leader
-        elif msg["source"][0] == self.lgroup.leader:
-          groupInfo = self.lgroup
-          dest = self.rgroup.leader
-        else:
-          #ERROR
-          pass
-        new_msg = {"type": "YES", "destination": [dest], "source": [self.name], "key": "MERGE", "value": "MERGE_REQ", "newNeighbor" : groupInfo}
-        self.req.send_json(new_msg)
-
-
-    ###############
-    #### READY ####
-    ###############
-    elif typ == "READY":
-      self.req.send_json({"destination": [self.group.leader], "type": "PROPOSE", "key": "READY", "value": msg["value"]})
-
-    elif typ == "READY_PAXOSED":
-        if msg["key"] == "SPLIT":
-          response = {"destination": msg["source"], "source": [self.name], "type" : "YES", "key": "SPLIT", "value": "SPLIT"}
-        elif msg["key"] == "MERGE":
-          response = {"destination": msg["source"], "source": [self.name], "type" : "YES", "key": "MERGE", "value": msg["value"]}
-      self.req.send_json(response) 
-
-    #######################
-    ###### NO & WAIT ######
-    #######################
-    elif typ == "NO" or typ == "WAIT":
-      self.loop.add_timeout(time.time() + .5, lambda: self.req.send_json({"type": "START", "destination":[self.group.leader], "source": [self.name], "key": msg["key"], "value": msg["value"]}))
-    ################
-    #### COMMIT ####
-    ################
-    elif typ == "COMMIT":
-        '''
-        if msg["key"] == "SPLIT":
-          response = {"destination": msg["source"], "source": [self.name], "type" : "YES", "key": "SPLIT", "value": "SPLIT"}
-        elif msg["key"] == "MERGE_ID":
-          response = {"destination": msg["source"], "source": [self.name], "type" : "YES", "key": "MERGE", "value": msg["value"]}
-        elif msg["key"] == "MERGE_REQ":
-          response = {"destination": msg["source"], "source": [self.name], "type" : "YES", "key": "MERGE", "value": "MERGE_REQ"}
-        elif msg["key"] == "MERGE_FWD":
-          response = {"destination": msg["source"], "source": [self.name], "type" : "YES", "key": "MERGE", "value": "MERGE_FWD"}
-        self.req.send_json(response) 
-        #when this is committed and its a merge, make sure to pass on a new left or right group in paxos with a propose message
-        self.req.send_json({"type": "PROPOSE", "destination": [self.group.leader], "key": msg["key"], "value": msg["value"]})
-        '''
-    ################################################
-    #--------------- UNKNOWN EVENT ----------------#
-    ################################################
+            print "This is not the typ eof message a proposer should be recieving"
     else:
-      self.req.send_json({'type': 'log', 'debug': {'event': 'unknown', 'node': self.name}})
-
-               
+        if typ == "PREPARE":
+            self.group.p_num += 1
+            if key not in self.n_int:
+                self.n_int[msg.key] = -1 #initialize
+            if n >= self.n_int[key]:
+                if key in self.acced: # proposals that have been accepted for that key
+                    high_p = sorted(self.acced[key], key=lambda x: x[1])[-1]
+                    self.n_int[msg.key] = high_p[1] #send the latest (greatest) n
+                else:
+                    high_p = None
+                    self.n_int[key] = n
+                new_msg = make_paxos_msg("PROMISE", msg["source"], [self.name], msg["value"], n, high_p)
+                self.req.send_json(new_msg)
+        elif typ == "ACCEPT":
+            if self.n_int[key] <= n:
+                new_msg = make_paxos_msg("ACCEPTED", msg["source"], [self.name], msg["value"], n, None) 
+                if key not in self.acced:
+                    self.acced[key] = []
+                self.acced[key].append((msg["value"], n))
+            else:
+                new_msg = make_paxos_msg("REJECTED", msg["source"], self.name, msg["value"], n, None)
+            self.req.send_json(new_msg)
+                                      
+        elif typ == "LEARN":
+            if key == ELECTION_ID:
+                self.group.leader = msg["value"]
+                self.leaderLease = dt.now() + LEADER_LEASE_TIME
+                del self.acced[ELECTION_ID]
+            elif key == ADD_ID:
+                pass
+            elif key == "GROUPS":
+                self.lgroup = msg["value"][0]
+                self.group = msg["value"][1]
+                self.rgroup = msg["value"][2]
+           
+            else:
+                self.store[long(key)] = msg["value"]
+        else:
+            print "This is not the type of message an acceptor should be receiving"
 
   def send_spam(self):
     '''
@@ -427,6 +399,10 @@ class Node(object):
     self.sub_sock.close()
     self.req_sock.close()
     sys.exit(0)
+
+def make_paxos_msg(typ, dst, src, key, value, p_num, prior_proposal):
+    return {"type": typ, "destination": dst, "source": src, "key": key, "value": value, 
+            "p_num": p_num, "prior_proposal": prior_proposal}
 
 if __name__ == '__main__':
   import argparse
