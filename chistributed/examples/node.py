@@ -145,17 +145,10 @@ class Node(object):
     Simple manual poller, dispatching received messages and sending those in
     the message queue whenever possible.
     '''
-<<<<<<< HEAD
-    print "I AM ALIVE"
-    print self.group
-    print self.rgroup
-    print self.lgroup
-=======
     LOG_FILENAME = "logging_" + self.name
     sys.stdout = open(LOG_FILENAME, 'w')
 
     print "I,",self.name,", AM ALIVE", "\n"
->>>>>>> 7df6f082905f83dfa118e1db1808d40f1fb9817f
     self.loop.start()
     self.loop.add_timeout(time.time() + TIME_LOOP, lambda: self.housekeeping())
 
@@ -929,13 +922,7 @@ if __name__ == '__main__':
   args = parser.parse_args()
   print str(len(args.key_range.split(',')))
   args.peer_names = args.peer_names.split(',')
-  '''
-  args.pred_group = args.pred_group.split(',')
-  args.succ_group = args.succ_group.split(',')
-  args.key_range = args.key_range.split(',')
-  args.key_range1 = args.key_range1.split(',')
-  args.key_range2 = args.key_range2.split(',')
-  '''
+ 
   Node(args.node_name, args.pub_endpoint, args.router_endpoint, args.spammer,
        args.peer_names, args.key_range, args.pred_group, args.key_range1, 
        args.succ_group, args.key_range2).start()
