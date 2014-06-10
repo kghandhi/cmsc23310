@@ -5,15 +5,15 @@ import signal
 import zmq
 import time
 import math
+import sha
 from datetime import datetime as dt
 from datetime import timedelta
 from zmq.eventloop import ioloop, zmqstream
 ioloop.install()
 
 MAX_GROUP = 10
-MIN_GROUP = 4
-#MAX_KEY = int('f'*128, 16)
-MAX_KEY = 16
+MIN_GROUP = 2
+MAX_KEY = int('f'*128, 16)
 TIME_LOOP = 2 #how often we house keep
 
 TWOPC_MESSAGES = ["START","START_PAXOSED", "READY","READY_PAXOSED", "YES","YES_PAXOSED",
@@ -60,15 +60,10 @@ class Node(object):
     # if key_range and key_range1 and key_range2:
     #   print key_range, key_range1, key_range2
     #   print key_range[0]
-    self.group = Group((key_range[0], key_range[1]), 
-                       peer_names[0], peer_names, 1)  #group object
-   
+    self.group = Group((key_range[0], key_range[1]), peer_names[0], peer_names, 1)  #group object   
     self.lgroup = Group((key_range1[0],key_range1[1]), pred_names[0], pred_names, 1) #group object
     self.rgroup = Group((key_range2[0], key_range2[1]), succ_names[0], succ_names, 1) #group object
 
-    self.group = Group((0,48),None,None,None)
-    self.lgroup = None
-    self.rgroup = None
     self.store = dict()
 
     self.BLOCK_2PC = None
@@ -154,8 +149,6 @@ class Node(object):
 
 
   def housekeeping(self):
-
-    print "housekeeping!"
     if self.pong:
       for dead_member in self.pong:
         proposal = {"type": "START", "destination": [self.group.leader], "source": self.name, 
@@ -189,6 +182,11 @@ class Node(object):
           handle = {"type": "COMMIT", "source": self.name, "destination": [dest], "key": key, 
                     "value": value}
         self.req.send_json(handle)
+
+    if not self.group.leader:
+      proposal = {"type": "PROPOSE", "destination": [self.name], "source": self.name, 
+                  "key": "ELECTION", "value": self.name, "parent": self.name, "who": None}
+      self.req.send_json(proposal)
 
     self.pong = [mem for mem in self.group.members]
     for mem in self.pong:
@@ -366,7 +364,7 @@ class Node(object):
     elif typ == "set_ack":
       if msg["req"] in self.pending_reqs:
         self.pending_reqs.remove(msg["req"])
-
+        
     else:
       self.req.send_json({'type': 'log', 'debug': {'event': 'unknown', 'node': self.name}})
 
@@ -376,7 +374,7 @@ class Node(object):
     key = msg["key"]
     n = msg["p_num"]
     self.accs = [m for m in self.group.members if m != self.name]
-    if self.group.leader == self.name:
+    if self.group.leader == self.name or key == "LEADER":
       if typ == "PROPOSE":        
         if self.group.p_num not in self.proposals:
           self.proposals[self.group.p_num] = msg["value"]
@@ -429,15 +427,20 @@ class Node(object):
               if n not in self.props_accepted:
                 self.props_accepted[msg.n] = (self.proposals[n], msg["value"])
                 if key == "START":
-                  self.req.send_json({"type": "START_PAXOSED", "destination": [self.group.leader], 
+                  self.req.send_json({"parent": msg["parent"], "type": "START_PAXOSED", "destination": [self.group.leader], 
                                       "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
                 elif key == "READY":
-                  self.req.send_json({"type": "READY_PAXOSED", "destination": [self.group.leader], 
+                  self.req.send_json({"parent": msg["parent"], "type": "READY_PAXOSED", "destination": [self.group.leader], 
                                       "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
                 elif key == "YES":
-                  self.req.send_json({"type": "YES_PAXOSED", "destination": [self.group.leader], 
+                  self.req.send_json({"parent": msg["parent"], "type": "YES_PAXOSED", "destination": [self.group.leader], 
                                       "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
+         
+
                 else:
+                  if key == "ELECTION":
+                    self.req.send_join({"type": "COMMIT", "destination": [self.lgroup.leader, self.rgroup.leader], 
+                                        "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
                   for member in self.accs:
                     new_msg = make_paxos_msg("LEARN", [member], self.name, key, msg["value"], n, 
                                              None, msg["parent"], msg["who"])
@@ -480,10 +483,11 @@ class Node(object):
             self.req.send_json(new_msg)
             
         elif typ == "LEARN":
-          if key == ELECTION_ID:
+          if key == "ELECTION":
             self.group.leader = msg["value"]
             self.group.leaderLease = dt.now() + LEADER_LEASE_TIME
-            del self.acced[ELECTION_ID]
+            
+            del self.acced["ELECTION"]
     
           elif key == "GROUPS":
             self.lgroup = msg["value"][0]
@@ -851,8 +855,8 @@ class Node(object):
             learn_msg = ({"parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, "type": "LEARN", 
                           "key": "GROUPS", "value": (msg["value"],self.group,self.rgroup), "store": dict()})
           elif msg["which"] == "leftMerge":
-            learn_msg = ({  "parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, 
-                            "type": "LEARN", "key": "GROUPS", "value": (self.lgroup, self.group, msg["value"]), "store": dict()})
+            learn_msg = {"parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, 
+                            "type": "LEARN", "key": "GROUPS", "value": (self.lgroup, self.group, msg["value"]), "store": dict()}
           else:
             print "Commit illformed w/o which field"
             self.req.send_json(learn_msg)
@@ -864,8 +868,21 @@ class Node(object):
           learn_msg = ({  "parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, 
                           "type": "LEARN", "key": msg["key"], "value": (msg["value"]), "which" : msg["which"] })
           self.req.send_json(learn_msg)
-    else:
-      raise Exception("wow how did that happen")
+
+        elif msg["key"] == "ELECTION":
+          if msg["source"] in self.rgroup.members:
+            learn_msg = {"parent": msg["parent"], "destination": self.group.members, "source": self.name,
+                         "type": "LEARN", "key": msg["key"], "value": msg["value"], "which": "right"}
+          elif msg["source"] in self.lgroup.members:
+            learn_msg = {"parent": msg["parent"], "destination": self.group.members, "source": self.name,
+                         "type": "LEARN", "key": msg["key"], "value": msg["value"], "which": "right"}
+          else:
+            learn_msg = None
+          self.req.send_json(learn_msg)
+        else:
+          raise Exception("This isnt a valid Commit type={}".format(typ))
+      else:
+        raise Exception("wow how did that happen")
 
   def send_spam(self):
     '''
@@ -880,7 +897,7 @@ class Node(object):
       self.loop.add_timeout(t + 1, self.send_spam)
 
   def shutdown(self, sig, frame):
-        self.loop.stop()
+                            self.loop.stop()
         self.sub_sock.close()
         self.req_sock.close()
         sys.exit(0)
