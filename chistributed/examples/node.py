@@ -9,7 +9,6 @@ from datetime import datetime as dt
 from datetime import timedelta
 from zmq.eventloop import ioloop, zmqstream
 ioloop.install()
-sys.stdout = open("logging", 'w')
 
 MAX_GROUP = 10
 MIN_GROUP = 4
@@ -67,6 +66,9 @@ class Node(object):
     self.lgroup = Group((key_range1[0],key_range1[1]), pred_names[0], pred_names, 1) #group object
     self.rgroup = Group((key_range2[0], key_range2[1]), succ_names[0], succ_names, 1) #group object
 
+    self.group = Group((0,48),None,None,None)
+    self.lgroup = None
+    self.rgroup = None
     self.store = dict()
 
     self.BLOCK_2PC = None
@@ -143,10 +145,17 @@ class Node(object):
     Simple manual poller, dispatching received messages and sending those in
     the message queue whenever possible.
     '''
+<<<<<<< HEAD
     print "I AM ALIVE"
     print self.group
     print self.rgroup
     print self.lgroup
+=======
+    LOG_FILENAME = "logging_" + self.name
+    sys.stdout = open(LOG_FILENAME, 'w')
+
+    print "I,",self.name,", AM ALIVE", "\n"
+>>>>>>> 7df6f082905f83dfa118e1db1808d40f1fb9817f
     self.loop.start()
     self.loop.add_timeout(time.time() + TIME_LOOP, lambda: self.housekeeping())
 
@@ -201,12 +210,19 @@ class Node(object):
     pass
 
   def forwardTo(self, k):
-    lBound = self.group.key[0]
+    print "IN FORWARD TO"
+
+    lBound = self.group.key_range[0]
     rBound = self.group.key_range[1]
+    print lBound,rBound
     # L < R
     if ( lBound < rBound):
       if lBound < k and k < rBound:
-        return group.leader
+        print "Key in my range"
+        if group.leader:
+          return group.leader
+        else:
+          return self.name
       elif k < lBound and k < rBound:
         return group.pred_g.leader
       elif rBound < k and lBound < k:
@@ -248,6 +264,7 @@ class Node(object):
       if not self.connected:
         self.connected = True
         self.req.send_json({'type': 'helloResponse', 'source': self.name})
+        print self.name,"sent message",{'type': 'helloResponse', 'source': self.name},"\n"
         # if we're a spammer, start spamming!
         if self.spammer:
           self.loop.add_callback(self.send_spam)
@@ -255,6 +272,7 @@ class Node(object):
 
     elif typ == 'spam':
       self.req.send_json({'type': 'log', 'spam': msg})
+      print ""
       return
 
     elif typ == "PING":
@@ -297,11 +315,19 @@ class Node(object):
     #############
     #### GET ####
     #############
-    elif typ == 'get' or typ == 'getRelay':
+    if typ == 'get' or typ == 'getRelay':
+      print "MESSAGE: GET", msg["key"]
+
       k = msg['key']
+      if type(k) is unicode:
+        k = int(k)
+
       self.pending_reqs.append(("get", k))
-      
+      print "STILL ALIVE"
       dest = self.forwardTo(k)
+      print "Dest is",dest
+
+
 
       if dest == self.group.leader:
         try:
@@ -324,6 +350,7 @@ class Node(object):
     #### SET ####
     #############
     elif typ == 'set' or typ == 'setRelay':
+      print "SET MESSAGE"
       k = msg['key']
       v = msg['value']
       self.pending_req.append(("set", k, v))
@@ -902,12 +929,13 @@ if __name__ == '__main__':
   args = parser.parse_args()
   print str(len(args.key_range.split(',')))
   args.peer_names = args.peer_names.split(',')
+  '''
   args.pred_group = args.pred_group.split(',')
   args.succ_group = args.succ_group.split(',')
   args.key_range = args.key_range.split(',')
   args.key_range1 = args.key_range1.split(',')
   args.key_range2 = args.key_range2.split(',')
-
+  '''
   Node(args.node_name, args.pub_endpoint, args.router_endpoint, args.spammer,
        args.peer_names, args.key_range, args.pred_group, args.key_range1, 
        args.succ_group, args.key_range2).start()
