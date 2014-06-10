@@ -12,9 +12,9 @@
      elif typ == "START_PAXOSED":
       #IN LEARN PHASE, SEND_PAXOSED to LEADER
       #type start_paxosed, key start, value split,merge_id
-
-       if msg["value"] == "SPLIT_ID":
-         new_msg = { "parent":msg["parent"] ,"type": "READY", "destination": [self.lgroup.leader], "source": [self.name], "key": "SPLIT", "value": "SPLIT_ID"}
+       self.req.send_json({"parent" : msg["parent"] ,"destination": [self.group], "type": "LEARN", "key": "BLOCK", "value": msg["value"]})
+       if msg["value"] == "SPLIT":
+         new_msg = { "parent":msg["parent"] ,"type": "READY", "destination": [self.lgroup.leader], "source": [self.name], "key": "SPLIT", "value": "SPLIT"}
          self.req.send_json(new_msg)
          new_msg["destination"] = [self.rgroup.leader]
          self.req.send_json(new_msg)
@@ -37,11 +37,12 @@
          self.req.send_json({"parent" : msg["parent"] ,  "destination": [self.group.leader], "type": "PROPOSE", "key": "READY", "value": msg["value"]})
 
      elif typ == "READY_PAXOSED":
-       
+
        if msg["key"] == "SPLIT":
+         self.req.send_json({"parent" : msg["parent"] ,"destination": [self.group], "type": "LEARN", "key": "BLOCK", "value": "SPLIT"})
          response = { "parent":msg["parent"] ,"destination": msg["source"], "source": [self.name], "type" : "YES", "key": "SPLIT", "value": "SPLIT"}
        elif msg["key"] == "MERGE":
-
+         self.req.send_json({"parent" : msg["parent"] ,"destination": [self.group], "type": "LEARN", "key": "BLOCK", "value": "MERGE"})
          if msg["value"] == "MERGE_ID":
            response = { "parent":msg["parent"] ,"destination": msg["source"], "source": [self.name], "type" : "YES", "key": "MERGE", "value": "MERGE_ID"}
 
@@ -154,6 +155,7 @@
     #### COMMIT ####
     ################
      elif typ == "COMMIT": 
+       self.req.send_json({"parent" : msg["parent"] ,"destination": [self.group], "type": "LEARN", "key": "UNBLOCK"})
        if msg["key"] == "SPLIT":
           #response = { "parent":msg["parent"] ,"destination": msg["source"], "source": [self.name], "type" : "YES", "key": "SPLIT", "value": "SPLIT"}
          if msg["which"] == "yourRight":
