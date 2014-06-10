@@ -66,9 +66,6 @@ class Node(object):
     self.lgroup = Group((key_range1[0],key_range1[1]), pred_names[0], pred_names, 1) #group object
     self.rgroup = Group((key_range2[0], key_range2[1]), succ_names[0], succ_names, 1) #group object
 
-    self.group = Group((0,48),None,None,None)
-    self.lgroup = None
-    self.rgroup = None
     self.store = dict()
 
     self.BLOCK_2PC = None
@@ -203,7 +200,6 @@ class Node(object):
     pass
 
   def forwardTo(self, k):
-    print "IN FORWARD TO"
 
     lBound = self.group.key_range[0]
     rBound = self.group.key_range[1]
@@ -211,9 +207,8 @@ class Node(object):
     # L < R
     if ( lBound < rBound):
       if lBound < k and k < rBound:
-        print "Key in my range"
-        if group.leader:
-          return group.leader
+        if self.group.leader:
+          return self.group.leader
         else:
           return self.name
       elif k < lBound and k < rBound:
@@ -222,7 +217,6 @@ class Node(object):
         return group.succ_g.leader
       else:
         raise Exception("Key range does not exist")
-
     elif ( rBound < lBound):
       if lBound < k and k < MAX_KEY:
         return group.leader
@@ -312,21 +306,17 @@ class Node(object):
       print "MESSAGE: GET", msg["key"]
 
       k = msg['key']
-      if type(k) is unicode:
-        k = int(k)
 
       self.pending_reqs.append(("get", k))
-      print "STILL ALIVE"
+      print "ENTERING FORWARD TO"
       dest = self.forwardTo(k)
-      print "Dest is",dest
-
-
-
-      if dest == self.group.leader:
+      print "DESTINATION IS",dest
+      if dest == self.group.leader or dest == self.name:
         try:
           v = self.store[k]
           self.req.send_json({'type': 'log', 'debug': {'event': 'getting', 'node': self.name, 'key': k, 'value': v}})
           self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': v})
+          print "sent msg", {'type': 'getResponse', 'id': msg['id'], 'value': v}
         except KeyError:
           print "Oops! That is not a key for which we have a value. Try again..."
       else:
@@ -343,22 +333,24 @@ class Node(object):
     #### SET ####
     #############
     elif typ == 'set' or typ == 'setRelay':
-      print "SET MESSAGE"
+      print "MESSAGE: SET",msg["key"],"to",msg["value"]
       k = msg['key']
       v = msg['value']
-      self.pending_req.append(("set", k, v))
 
+      self.pending_reqs.append(("set", k, v))
       dest = self.forwardTo(k)
+      if dest == self.group.leader or dest == self.name:
 
-      if dest == self.group.leader:
         self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, 
-                            'value': v, 'prior': None, "p_num": self.p_num})
+                            'value': v, 'prior': None, "p_num": self.group.p_num})
+        print "SENT",{'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, 
+                            'value': v, 'prior': None, "p_num": self.group.p_num}
         self.req.send_json({'type': 'log', 'debug': {'event': 'setting', 'node': self.name, 'key': k, 'value': v}})
         self.req.send_json({'type': 'setResponse', 'id': msg['id'], 'value': v}) 
+        print "SENT",{'type': 'setResponse', 'id': msg['id'], 'value': v}
       else:
         self.req.send_json({'type' : 'setRelay', 'destination': [dest],'id' : msg['id'], 
                             'key': msg['key'], 'value' : msg['value']})
-        
       if typ == "setRelay":
         self.req.send_json({"type": "SET_ACK", "destination": [msg["source"]], 
                             "source": self.name, "req": ("set", k, v)})
@@ -922,6 +914,11 @@ if __name__ == '__main__':
   args = parser.parse_args()
   print str(len(args.key_range.split(',')))
   args.peer_names = args.peer_names.split(',')
+  args.key_range = args.key_range.split(',')
+  args.key_range1 = args.key_range1.split(',')
+  args.key_range2 = args.key_range2.split(',')
+  args.pred_group = args.pred_group.split(',')
+  args.succ_group = args.succ_group.split(',')
  
   Node(args.node_name, args.pub_endpoint, args.router_endpoint, args.spammer,
        args.peer_names, args.key_range, args.pred_group, args.key_range1, 
