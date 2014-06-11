@@ -23,6 +23,8 @@ TWOPC_UNBLOCKED = ["START_PAXOSED", "READY_PAXOSED","YES_PAXOSED","WAIT"]
 
 PAXOS_MESSAGES = ["PROPOSE","PROMISE", "PREPARE", "ACCEPT", "ACCEPTED", "REJECTED", "LEARN", "REDIRECT"]
 
+DHT_MESSAGES = ["get","getRelay","fwd_getResponse","get_ack","set","setRelay","fwd_setResponse","set_ack"]
+
 class Group(object):
   def __init__(self, key_range, leader, members, p_num):
     self.key_range = key_range #tuple [a,b)
@@ -288,83 +290,49 @@ class Node(object):
     # Second field is the empty delimiter
 
     msg = json.loads(msg_frames[2])
-    print self.name , "recieved message: ", msg
+    #print self.name , "recieved message: ", msg
     typ = msg['type']
+    if typ == "PROPOSE":
+      print "\n\n\t\tMY PROPOSE MSG",msg["key"],msg["value"],"\n\n"
 
-    #if typ == "PONG" or typ == "PING" or typ == "PONG123":
-    #self.req.send_json({'type': 'log', 'rando': msg})
+    if typ in ["hello","spam","PING","PONG"]:
+      self.handle_maintainence(msg,typ)
 
-
-    ######################
-    #### HELLO & SPAM ####
-    ######################
-    if typ == 'hello':
-      if not self.connected:
-        self.connected = True
-        self.loop.add_callback(self.housekeeping)
-        self.req.send_json({'type': 'helloResponse', 'source': self.name})
-        print self.name,"sent message",{'type': 'helloResponse', 'source': self.name},"\n"
-        # if we're a spammer, start spamming!
-        if self.spammer:
-          self.loop.add_callback(self.send_spam)
-      return
-
-    elif typ == 'spam':
-      self.req.send_json({'type': 'log', 'spam': msg})
-      return
-
-    elif typ == "PING":
-      print "RECIEVED PING",msg
-      print msg["source"]
-
-      pong = {"type": "PONG", "destination": [msg["source"]], "source": self.name, "value":None}
-      self.req.send_json(pong)
-
-      print "SENT PONG",pong
-      return
-
-    elif typ == "heartbeat":
-      print "received hearbeat"
-
-    elif typ == "PONG":
-      print "RECIEVED PONG",msg
-      print self.pong,msg["source"]
-      if msg["source"] in self.pong:
-        self.pong[msg["source"]] = 0
-      else:
-        print "received pong, not in"
-      print "\tSURVIVED PONG",self.pong
-      return
-
-    if typ in ["SET_ACK", "GET_ACK", "COMMIT_ACK"]:
+    elif typ in ["COMMIT_ACK"]:
       if msg["req"] in self.pending_reqs:
-        self.pending_reqs.remove(msg["req"])  
+        self.pending_reqs.remove(msg["req"]) 
+      return 
 
-    if msg['type'] in PAXOS_MESSAGES:
+    elif typ in PAXOS_MESSAGES:
       self.handle_paxos(msg)
       return
-    if msg['type'] in TWOPC_MESSAGES:
+
+    elif msg['type'] in TWOPC_MESSAGES:
       if self.name != self.group.leader:
         msg["destination"] = [self.group.leader]
         self.req.send_json(msg)
       elif self.BLOCK_2PC == None or self.BLOCK_2PC == (msg["parent"],msg["key"]) or msg["type"] in TWOPC_UNBLOCKED:
         self.handle_2pc(msg) 
       else: 
+        print "WE ARE BLOCKED - returned WAIT msg in response to",msg
         self.req.send_json({'type': 'WAIT', 'source': self.name,"key": msg["key"], "value": msg["value"]})
       return
 
-    ####################################################
-    #---------- MISC SETUP/FAILURE COMMANDS -----------#
-    ####################################################
+    elif typ in DHT_MESSAGES:
+      self.handle_get_set(msg,typ)
+      return
 
+    else:
+      self.req.send_json({'type': 'log', 'debug': {'value':msg}})
 
-    ####################################################
-    #---------- DHT BASIC COMMANDS AND REQS -----------#
-    ####################################################
+  #################
+  #################
+  ####   GET   ####
+  ####   SET   ####
+  #################
+  #################
 
-    #############
-    #### GET ####
-    #############
+  def handle_get_set(self,msg,typ):
     if typ == "fwd_getResponse":
       print "IN GETRESPONSE_FWD"
       self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': msg["value"]}) 
@@ -390,20 +358,24 @@ class Node(object):
           v = self.store[long(k)]
           if typ == "get":
             self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': v})
+            print "sent msg", {'type': 'getResponse', 'id': msg['id'], 'value': v}
           else:
             self.req.send_json({'type': 'fwd_getResponse', "destination":[msg["parent"][0]], 'id': msg["parent"][1], 'value': v})
-          print "sent msg", {'type': 'getResponse', 'id': msg['id'], 'value': v}
+            print "sent msg", ({'type': 'fwd_getResponse', "destination":[msg["parent"][0]], 'id': msg["parent"][1], 'value': v})
 
         except KeyError:
           print "Oops! That is not a key for which we have a value. Try again..."
       else:
         self.req.send_json({'type' : 'getRelay', 'parent' : parent, 'destination': [dest],
-                           'id' : msg['id'], 'key': msg['key']})
+                           'id' : msg['id'], 'key': msg['key'],"source":self.name})
         print "sent getRelay",({'type' : 'getRelay', 'parent' : parent, 'destination': [dest],
                            'id' : msg['id'], 'key': msg['key']})
       if typ == "getRelay":
+        print "in getRelay"
+        print msg
         get_ack = ({"destination": [msg["source"]], "source": self.name, "parent" : parent,
                            "type": "get_ack", "req": ("get", k)})
+        print get_ack
         self.req.send_json(get_ack)
         print "sent get_ack",get_ack 
 
@@ -420,7 +392,7 @@ class Node(object):
       print "SENT setResponse TO BROKER\n"
 
     elif typ == 'set' or typ == 'setRelay':
-      print "MESSAGE: SET",msg["key"],"to",msg["value"]
+      print "MESSAGE: SETRELAY",msg["key"],"to",msg["value"]
       k = msg['key']
       v = msg['value']
 
@@ -436,10 +408,12 @@ class Node(object):
       if dest == self.group.leader or dest == self.name:
         propose_paxos = ({'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, "who": self.name, 
                             'value': v, 'prior': None, "p_num": self.group.p_num, "parent":parent})
+      
         self.req.send_json(propose_paxos)
 
         self.pending_reqs.remove(("set", k, v))
-        print "SENT",propose_paxos
+        print "SENT PROPOSE?",propose_paxos,"\n",msg
+        #self.req.send_json({"type":"log", "check":propose_paxos})
       else:
         setRelay_msg = ({'type' : 'setRelay', 'destination': [dest],'id' : msg['id'], 
                             'key': msg['key'], 'value' : msg['value'], "parent":parent, "source":self.name})
@@ -455,9 +429,44 @@ class Node(object):
       print "RECIEVED SET_ACK",msg
       if msg["req"] in self.pending_reqs:
         self.pending_reqs.remove(msg["req"])
-        
-    else:
-      self.req.send_json({'type': 'log', 'debug': {'value':msg}})
+
+    return
+
+  def handle_maintainence(self,msg,typ):
+    if typ == 'hello':
+      if not self.connected:
+        self.connected = True
+        self.loop.add_callback(self.housekeeping)
+        self.req.send_json({'type': 'helloResponse', 'source': self.name})
+        print self.name,"sent message",{'type': 'helloResponse', 'source': self.name},"\n"
+        # if we're a spammer, start spamming!
+        if self.spammer:
+          self.loop.add_callback(self.send_spam)
+      return
+
+    elif typ == 'spam':
+      self.req.send_json({'type': 'log', 'spam': msg})
+      return
+
+    elif typ == "PING":
+      print "RECIEVED PING",msg
+      print msg["source"]
+
+      pong = {"type": "PONG", "destination": [msg["source"]], "source": self.name, "value":None}
+      self.req.send_json(pong)
+
+      print "SENT PONG",pong
+      return
+
+    elif typ == "PONG":
+      print "RECIEVED PONG",msg
+      print self.pong,msg["source"]
+      if msg["source"] in self.pong:
+        self.pong[msg["source"]] = 0
+      else:
+        print "received pong, not in"
+      print "\tSURVIVED PONG",self.pong
+      return    
 
   #################################
   #######    HANDLE         #######
@@ -606,7 +615,7 @@ class Node(object):
           self.req.send_json(new_msg)
             
       elif typ == "LEARN":
-          print "IN LEARN",key
+          print "IN LEARN",msg
           if key == "ELECTION":
             if msg["which"]: 
               if msg["which"] == "right":
@@ -657,9 +666,17 @@ class Node(object):
             self.group.members.remove(msg["value"])
 
           else:
+            print "UPDATED STORE",key,msg["value"]
             self.store[long(key)] = msg["value"]
       else:
           print "This is not the type of message an acceptor should be receiving"
+
+  #################
+  #################
+  ####  HANDLE  ###
+  ####   2PC   ####
+  #################
+  #################
 
   def handle_2pc(self, msg):
     typ = msg["type"]
