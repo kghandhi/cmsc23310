@@ -14,7 +14,7 @@ ioloop.install()
 MAX_GROUP = 10
 MIN_GROUP = 2
 #MAX_KEY = int('f'*128, 16)
-MAX_KEY = 32
+MAX_KEY = 48
 TIME_LOOP = 2 #how often we house keep
 
 TWOPC_MESSAGES = ["START","START_PAXOSED", "READY","READY_PAXOSED", "YES","YES_PAXOSED",
@@ -545,7 +545,7 @@ class Node(object):
                 else:
                   print "LEARN ELECTION OR KEY"
                   if key == "ELECTION":
-                    self.req.send_join({"type": "COMMIT", "destination": [self.lgroup.leader, self.rgroup.leader], 
+                    self.req.send_json({"type": "COMMIT", "destination": [self.lgroup.leader, self.rgroup.leader], 
                                         "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
                   for member in self.accs:
                     new_msg = make_paxos_msg("LEARN", [member], self.name, key, msg["value"], n, 
