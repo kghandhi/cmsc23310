@@ -31,7 +31,10 @@ class Group(object):
     self.p_num = p_num #initially 1
 
   def __repr__(self):
-    return "key_range=[{},{}), leader={}, p_num={}\n members={}".format(self.key_range[0], self.key_range[1], self.leader, self.p_num, self.members)
+    return "key_range=[{},{}), leader={}, p_num={}\n members={}".format(self.key_range[0], 
+                                                                        self.key_range[1], 
+                                                                        self.leader, self.p_num, 
+                                                                        self.members)
     print "members={}".format(self.members)
     
 class Node(object):
@@ -59,7 +62,7 @@ class Node(object):
     self.name = node_name
    
     self.group = Group((key_range[0], key_range[1]), peer_names[0], peer_names, 1)  #group object   
-    self.lgroup = Group((key_range1[0],key_range1[1]), pred_names[0], pred_names, 1) #group object
+    self.lgroup = Group((key_range1[0], key_range1[1]), pred_names[0], pred_names, 1) #group object
     self.rgroup = Group((key_range2[0], key_range2[1]), succ_names[0], succ_names, 1) #group object
 
     self.store = dict()
@@ -143,8 +146,7 @@ class Node(object):
 
     print "I,",self.name,", AM ALIVE", "\n"
     self.loop.start()
-    self.loop.add_timeout(time.time() + TIME_LOOP, lambda: self.housekeeping())
-
+    self.loop.add_callback(self.housekeeping)
 
   def housekeeping(self):
     if self.pong:
@@ -190,7 +192,7 @@ class Node(object):
     for mem in self.pong:
       ping = {"type": "PING", "destination": [mem], "source": self.name}
 
-    self.loop.add_timeout(time.time() + TIME_LOOP, lambda: self.housekeeping())
+    self.loop.add_timeout(time.time() + TIME_LOOP, self.housekeeping)
 
   def handle_broker_message(self, msg_frames):
     '''
@@ -307,13 +309,13 @@ class Node(object):
     #############
     if typ == 'get' or typ == 'getRelay':
       print "MESSAGE: GET", msg["key"]
+      k = msg['key']
 
       if typ == "get":
-        parent = (self.name,msg["id"])
+        parent = (self.name, msg["id"])
+       
       else:
         parent = msg["parent"]
-
-      k = msg['key']
 
       self.pending_reqs.append(("get", k))
       print "ENTERING FORWARD TO"
