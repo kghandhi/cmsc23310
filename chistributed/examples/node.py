@@ -475,10 +475,10 @@ class Node(object):
                                              None, msg["parent"], msg["who"])
                     self.req.send_json(new_msg)
                     print "SENT LEARN", new_msg
-                  print "pre send IMPORTANT"
+
                   self.req.send_json({'type': 'fwd_setResponse', 'destination' : [msg["parent"][0]],
                                  "id":msg["parent"][1], 'value': msg["value"], "source":self.name})  
-                  print "post send IMPORTANT"
+                  print "sent "
       elif typ == "REDIRECT":
           if key not in self.redirects:
             self.redirects[key] = []
