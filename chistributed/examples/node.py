@@ -15,6 +15,7 @@ ioloop.install()
 MAX_GROUP = 10
 MIN_GROUP = 2
 #MAX_KEY = int('f'*128, 16)
+MIN_KEY = 0
 MAX_KEY = 48
 TIME_LOOP = 2 #how often we house keep
 
@@ -37,7 +38,7 @@ class Group(object):
     self.p_num = p_num #initially 1
 
   def __repr__(self):
-    return "key_range=[{},{}), leader={}, p_num={}\n members={}".format(self.key_range[0], 
+    return "\nGROUP:\nkey_range=[{},{}),\n leader={},\n p_num={},\nmembers={}".format(self.key_range[0], 
                                                                         self.key_range[1], 
                                                                         self.leader, self.p_num, 
                                                                         self.members)
@@ -104,6 +105,9 @@ class Node(object):
     if msg["type"] == "helloResponse" or msg["type"] == "log":
       self.req.send_json(msg)
       return
+    if msg["type"] == "setResponse" or msg["type"] == "getResponse":
+      self.req.send_json(msg)
+      return
 
     if "destination" not in msg:
       print "DESTINATION NOT IN MSG",msg
@@ -146,16 +150,19 @@ class Node(object):
     return (new_left, new_right)
 
   def handle_merge(self, side):
+    print "IN HANDLE MERGE"
     if side == "left":
       b = self.group.key_range[1]
       a = self.lgroup.key_range[0]
-      new_ms = [x for x in self.group.members].extend(self.lgroup.members)
+      new_ms = [x for x in self.group.members]
+      new_ms.extend(self.lgroup.members)
       new_p_num = max(self.lgroup.p_num, self.group.p_num)
 
     elif side == "right":
       a = self.group.key_range[0]
       b = self.rgroup.key_range[1]
-      new_ms = [x for x in self.group.members].extend(self.rgroup.members)
+      new_ms = [x for x in self.group.members]
+      new_ms.extend(self.rgroup.members)
       new_p_num = max(self.rgroup.p_num, self.group.p_num)
 
     new_group = Group((a,b), None, new_ms, new_p_num)
@@ -176,9 +183,8 @@ class Node(object):
     #self.loop.add_callback(self.housekeeping)
 
   def housekeeping(self):
-
-    print "\n\nIN HOUSEKEEPING"
     return
+    print "\n\nIN HOUSEKEEPING"
     #######################
     #HEARTBEATS
     #######################
@@ -210,9 +216,15 @@ class Node(object):
     #CHECK IF KICKED OUT OF GROUP
     ##############################
     if self.name not in self.group.members:
-      self.SEND_MSG({"type": "START", "destination": [self.group.leader], "source": self.name, 
+      plz_add = ({"type": "START", "source": self.name, 
                           "key": "ADD", "value": self.name})
-      print "KICKED OUT OF GROUP, ASKING TO REJOIN"
+
+      if self.group.leader:
+        plz_add["destination"] = [self.group.leader]
+      else:
+        plz_add["destination"] = [x for x in self.group.members if x != self.name]
+      self.SEND_MSG(plz_add)
+      print "KICKED OUT OF GROUP, ASKING TO REJOIN",plz_add
     
     ##########################
     #CHECK GROUPSIZE
@@ -250,7 +262,7 @@ class Node(object):
     ##### CHECK LEADER STATUS
     ###########################
     if not self.group.leader:
-      proposal = {"type": "PROPOSE", "destination": [self.name], "source": self.name, 
+      proposal = {"type": "PROPOSE", "destination": [self.name], "source": self.name,"tpcFROM":self.name, 
                   "key": "ELECTION", "value": self.name, "parent": self.name, "who": None}
       self.SEND_MSG(proposal)
       print "PROPOSE LEADER CHANGE"
@@ -312,33 +324,31 @@ class Node(object):
     # Second field is the empty delimiter
 
     msg = json.loads(msg_frames[2])
-    
-    print "GOT MSG",msg
 
     typ = msg['type']
 
-    if typ == "PROPOSE":
-      print "\n\n\t\tMY PROPOSE MSG",msg["key"],msg["value"],"\n\n"
+    if typ == "START":
+      print "SOMEONE IS TRYING TO ADD",msg
+
+    if typ == "GROUP_MEMBERSHIP":
+      #time.sleep(5)
+      #self.SEND_MSG({"type":"log","lgroup":groupToDict(self.lgroup),"group":groupToDict(self.group),"rgroup":groupToDict(self.rgroup)})
+      return
 
     if typ in ["hello","spam","PING","PONG"]:
       self.handle_maintainence(msg,typ)
 
     elif typ in ["COMMIT_ACK"]:
-      msg["req"]
+      print "\n", msg["req"]
       for req in self.pending_reqs:
+        print req
         if len(req) == 4 and len(msg["req"]) == 4:
-          if req[1] == msg["req"][1] and req[3] == msg["req"][3]:
+          if req[1] == msg["req"][1] and req[3] == msg["req"][3][0]:
             self.pending_reqs.remove(req)
             print "took commit_ack out of pending",msg["req"]
             return
-      '''
-      if msg["req"] in self.pending_reqs:
-        self.pending_reqs.remove(msg["req"]) 
-        print "took commit_ack out of pending",msg["req"]
-      '''
-      print "commit_ack not in pending"
-      print msg["req"]
-      print self.pending_reqs
+      print "COMMIT_ACK NOT IN PENDING"
+ 
       return 
 
     elif typ in PAXOS_MESSAGES:
@@ -347,12 +357,13 @@ class Node(object):
       return
 
     elif msg['type'] in TWOPC_MESSAGES:
+      print "2pc msg, not yet in handler"
       if self.name != self.group.leader:
         msg["destination"] = [self.group.leader]
         self.SEND_MSG(msg)
         print "FWD'ed msg to leader",msg
       elif self.BLOCK_2PC == None or self.BLOCK_2PC == (msg["parent"],msg["key"]) or msg["type"] in TWOPC_UNBLOCKED:
-        self.handle_2pc(msg) 
+        self.handle_2pc(msg)
       else: 
         print "WE ARE BLOCKED - returned WAIT msg in response to",self.BLOCK_2PC , msg
         self.SEND_MSG({'type': 'WAIT', 'source': self.name,"key": msg["key"],
@@ -439,19 +450,23 @@ class Node(object):
 
       if typ == "set":
         parent = (self.name,msg["id"])
+        tpcFROM = self.name
       else:
         parent = msg["parent"]
+        tpcFROM = msg["source"]
 
 
       self.pending_reqs.append(("set", k, v))
       dest = self.forwardTo(k)
 
       if dest == self.group.leader or dest == self.name:
+        print "HERE",msg
         propose_paxos = ({'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, "who": self.name, 
-                            'value': v, 'prior': None, "p_num": self.group.p_num, "parent":parent})
-      
+                          'value': v,"tpcFROM":tpcFROM, 'prior': None, "p_num": self.group.p_num, "parent":parent})
+        print "HERE2"
         self.SEND_MSG(propose_paxos)
-
+        
+        print "HERE3"
         self.pending_reqs.remove(("set", k, v))
         print "SENT PROPOSE?",propose_paxos,"\n",msg
         #self.SEND_MSG({"type":"log", "check":propose_paxos})
@@ -528,7 +543,7 @@ class Node(object):
             self.proposals[self.group.p_num] = msg["value"]
           for member in self.accs:
               new_msg = make_paxos_msg("PREPARE", [member], self.name, key, msg["value"], 
-                                       self.group.p_num, None, msg["parent"], msg["who"])
+                                       self.group.p_num, None, msg["parent"], msg["who"], msg["tpcFROM"])
 
               self.SEND_MSG(new_msg)
               if LOG_PAXOS: print "SENT PAXOS MESSAGE",new_msg
@@ -551,7 +566,7 @@ class Node(object):
               for member in self.accs:
                 #def make_paxos_msg(typ, dst, src, key, value, p_num, prior_proposal, parent, who):
                 new_msg = make_paxos_msg("ACCEPT", [member], self.name, key, msg["value"], 
-                                         n, None, msg["parent"], msg["who"])
+                                         n, None, msg["parent"], msg["who"],msg["tpcFROM"])
                 self.SEND_MSG(new_msg)
                 if LOG_PAXOS: print "SENT ACCEPT",new_msg
                 
@@ -566,7 +581,7 @@ class Node(object):
                 self.proposals[self.group.p_num] = msg["value"]
               for member in self.accs:
                   new_msg = make_paxos_msg("PREPARE", [member], self.name, key, msg["value"], 
-                                           self.group.p_num, None, msg["parent"], msg["who"])
+                                           self.group.p_num, None, msg["parent"], msg["who"],msg["tpcFROM"])
                   self.SEND_MSG(new_msg)
               self.promises[self.group.p_num] = []
               self.group.p_num += 1
@@ -585,35 +600,36 @@ class Node(object):
 
                 if key == "START":
                   self.SEND_MSG({"parent": msg["parent"], "type": "START_PAXOSED", "destination": [self.group.leader], 
-                                      "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
+                            "source": self.name, "value": msg["value"], "key": key, "who": msg["who"],"tpcFROM":msg["tpcFROM"]})
                 elif key == "READY":
                   self.SEND_MSG({"parent": msg["parent"], "type": "READY_PAXOSED", "destination": [self.group.leader], 
-                                      "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
+                              "source": self.name, "value": msg["value"], "key": key, "who": msg["who"],"tpcFROM":msg["tpcFROM"]})
                 elif key == "YES":
                   self.SEND_MSG({"parent": msg["parent"], "type": "YES_PAXOSED", "destination": [self.group.leader], 
-                                      "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
+                                "source": self.name, "value": msg["value"], "key": key, "who": msg["who"],"tpcFROM":msg["tpcFROM"]})
                 else:
-                  if LOG_PAXOS: print "LEARN ELECTION OR KEY"
+                  if LOG_PAXOS: print "LEARN ELECTION OR KEY",msg
                   if key == "ELECTION":
                     self.SEND_MSG({"type": "COMMIT", "destination": [self.lgroup.leader, self.rgroup.leader], 
                                         "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
                   for member in self.accs:
                     new_msg = make_paxos_msg("LEARN", [member], self.name, key, msg["value"], n, 
-                                             None, msg["parent"], msg["who"])
+                                             None, msg["parent"], msg["who"],msg["tpcFROM"])
                     self.SEND_MSG(new_msg)
 
                     if LOG_PAXOS: print "SENT LEARN", new_msg
 
-                  self.SEND_MSG({'type': 'fwd_setResponse', 'destination' : [msg["parent"][0]],
-                                 "id":msg["parent"][1], 'value': msg["value"], "source":self.name})  
-                  if LOG_PAXOS: print "sent "
+                  setResponse_fwd_msg = ({'type': 'fwd_setResponse', 'destination' : [msg["parent"][0]],"id":msg["parent"][1], 'value': msg["value"], "source":self.name}) 
+
+                  self.SEND_MSG(setResponse_fwd_msg) 
+                  if LOG_PAXOS: print "sent ",setResponse_fwd_msg
       elif typ == "REDIRECT":
           if key not in self.redirects:
             self.redirects[key] = []
             if n not in self.redirects[key]:
               self.redirects[key].append(n)
               new_msg = make_paxos_msg("PROPOSE", [msg["source"]], self.name, key, msg["value"], 
-                                       n, None, msg["parent"], msg["who"])
+                                       n, None, msg["parent"], msg["who"],msg["tpcFROM"])
       else:
           if LOG_PAXOS: print "This is not the type of message a proposer should be recieving"
           self.SEND_MSG({'type': 'log', 'spam': msg})
@@ -638,20 +654,20 @@ class Node(object):
             if LOG_PAXOS: print "About to make new msg",msg["parent"], msg["who"]
               
             new_msg = make_paxos_msg("PROMISE", [msg["source"]], self.name, msg["key"],msg["value"], 
-                                     n, high_p, msg["parent"], msg["who"])
+                                     n, high_p, msg["parent"], msg["who"],msg["tpcFROM"])
             self.SEND_MSG(new_msg)
             if LOG_PAXOS: print "SENT PREPARE",new_msg
       elif typ == "ACCEPT":
           if self.n_int[key] <= n:
             new_msg = make_paxos_msg("ACCEPTED", [msg["source"]], self.name,msg["key"], msg["value"], 
-                                     n, None, msg["parent"], msg["who"]) 
+                                     n, None, msg["parent"], msg["who"],msg["tpcFROM"]) 
             if LOG_PAXOS: print "SENT ACCEPTED",msg
             if key not in self.acced:
               self.acced[key] = []
               self.acced[key].append((msg["value"], n))
           else:
               new_msg = make_paxos_msg("REJECTED", [msg["source"]], self.name,msg["key"], msg["value"], 
-                                       n, None, msg["parent"], msg["who"])
+                                       n, None, msg["parent"], msg["who"],msg["tpcFROM"])
               if LOG_PAXOS: print "SENT REJECTED",msg
           self.SEND_MSG(new_msg)
             
@@ -682,6 +698,8 @@ class Node(object):
             print "learned group",self.group
             print "learned groupR",self.rgroup
 
+            self.SEND_MSG( {"type":"log","GROUP_CHANGE": {"lgroup":groupToDict(self.lgroup),"group":groupToDict(self.group),"rgroup":groupToDict(self.rgroup)} })
+
           elif key == "BLOCK":
             self.BLOCK_2PC = (msg["parent"], msg["value"])
 
@@ -692,28 +710,39 @@ class Node(object):
             self.lgroup = dictToGroup( msg["value"][0] )
             self.group = dictToGroup( msg["value"][1] )
             self.rgroup = dictToGroup( msg["value"][2] )
-            self.store = self.store = msg["store"]
+            self.store = self.store.update(msg["store"]) 
+
+            print "learned groupL",self.lgroup
+            print "learned group",self.group
+            print "learned groupR",self.rgroup
 
           elif key == "ADD_OTHER":
-            if which == "yourRight":
+            print "HERE",msg
+            if msg["which"] == "yourRight":
               self.rgroup.members.append(msg["value"])
-            elif which == "yourLeft":
+              print "ADDED OTHER R:",self.rgroup
+            elif msg["which"] == "yourLeft":
               self.lgroup.members.append(msg["value"])
+              print "ADDED OTHER L:",self.lgroup
             else:
               raise Exception("Well which group has changed?") 
 
           elif key == "DROP_OTHER":
-            if which == "yourRight":
+            if msg["which"] == "yourRight":
               self.rgroup.members.remove(msg["value"])
-            elif which == "yourLeft":
+              print "DROPPED OTHER R:",self.rgroup
+            elif msg["which"] == "yourLeft":
               self.lgroup.members.remove(msg["value"])
+              print "DROPPED OTHER L:",self.lgroup
             else:
               raise Exception("Well which group has changed?")
 
           elif key == "DROP_SELF":
             self.group.members.remove(msg["value"])
+            print "DROPPED SOMEONE IN GROUP:",self.group
 
           else:
+            print "UPDATING STORE"
             if LOG_PAXOS: print "UPDATED STORE",key,msg["value"]
             self.store[long(key)] = msg["value"]
       else:
@@ -728,7 +757,7 @@ class Node(object):
 
   def handle_2pc(self, msg):
     typ = msg["type"]
-    print "\n"
+    print "GOT 2pc msg",msg
      ###############
      #### START ####
      ###############
@@ -745,8 +774,12 @@ class Node(object):
       self.SEND_MSG(block_msg)
       print "sent block",block_msg
 
-      paxos_start = ({"parent" : self.name ,"destination": [self.group.leader], "type": "PROPOSE",
+      if "source" not in msg:
+        msg["source"] = self.name
+
+      paxos_start = ({"parent" : self.name ,"destination": [self.group.leader], "type": "PROPOSE","tpcFROM":msg["source"],
                           "key": "START", "value": msg["key"] , "who" : msg["value"],"p_num":self.group.p_num})
+
       self.SEND_MSG(paxos_start)
       print "sent start to paxos",paxos_start
       print
@@ -757,7 +790,8 @@ class Node(object):
     elif typ == "START_PAXOSED":
       print "2PC START PAXOSED",msg
       #INPUT type start_paxosed, key start, value split/merge/add/drop , who split/merge_id/name/name
-      if msg["value"] == "SPLIT" or msg["key"] == "ADD" or msg["key"] == "DROP":
+      if msg["value"] == "SPLIT" or msg["value"] == "ADD" or msg["value"] == "DROP":
+        print "IN ADD"
         new_msg = { "parent":msg["parent"] ,"type": "READY", "destination": [self.lgroup.leader],
                     "source": self.name, "key": msg["value"], "value": msg["who"] }
         self.SEND_MSG(new_msg)
@@ -793,7 +827,7 @@ class Node(object):
     elif typ == "READY":
       print "RECEIVED READY",msg
       # type READY , key split/merge/add/drop , value split/MERGE_ID/ / /name/name
-      ready_paxos = ({"parent" : msg["parent"] , "source": self.name, "destination": [self.group.leader], 
+      ready_paxos = ({"parent" : msg["parent"] , "source": self.name, "destination": [self.group.leader],"tpcFROM":msg["source"], 
                 "type": "PROPOSE", "key": "READY", "value": msg["key"] , "who" : msg["value"],"p_num":self.group.p_num})
       self.SEND_MSG(ready_paxos)
       print "SENT READY to PAXOS",ready_paxos
@@ -807,14 +841,14 @@ class Node(object):
        #########################
        #### SPLIT,ADD,DROP #####
        #########################
-      if msg["value"] == "SPLIT" or msg["key"] == "ADD" or msg["key"] == "DROP":
+      if msg["value"] == "SPLIT" or msg["value"] == "ADD" or msg["value"] == "DROP":
         block_paxos = ({"parent" : msg["parent"] ,"source": self.name, "destination": [self.group.leader], 
                             "type": "LEARN", "key": "BLOCK", "value": msg["value"],"p_num":self.group.p_num})
         self.SEND_MSG(block_paxos)
         print "paxos block",block_paxos
 
         response = {"parent":msg["parent"] ,"destination": [msg["parent"]], "source": self.name, 
-                    "type" : "YES", "key": "SPLIT", "value": msg["who"]}
+                    "type" : "YES", "key": msg["value"], "value": msg["who"]}
        ################
        #### MERGE #####
        ################
@@ -837,21 +871,20 @@ class Node(object):
          #### MERGE_REQ #####
          ####################
         elif msg["who"] == "MERGE_REQ":
+          print "IN MERGE_REQ after READY_PAXOSED",msg
           response = {"parent":msg["parent"], "source": self.name, "type" : "READY", "key": "MERGE", "value": "MERGE_FWD"}
-          if msg["source"] == self.rgroup.leader:
-
+          if msg["tpcFROM"] == self.rgroup.leader:
             response["destination"] =  [self.lgroup.leader]
-          elif msg["source"] == self.lgroup.leader:
+          elif msg["tpcFROM"] == self.lgroup.leader:
             response["destination"] =  [self.rgroup.leader]
           else:
             print "not leader of either group?"
             return
-
          ###################
          #### MERGE_FWD #####
          ###################
         elif msg["who"] == "MERGE_FWD":
-          response = {"parent": msg["parent"] ,"destination": [msg["source"]], "source": self.name, 
+          response = {"parent": msg["parent"] ,"destination": [msg["tpcFROM"]], "source": self.name, 
                       "type" : "YES", "key": "MERGE", "value": "MERGE_FWD"}
 
 
@@ -870,9 +903,10 @@ class Node(object):
        #### MERGE_REQ #####
        ####################
       if msg["value"] == "MERGE_REQ":
-
+        print "IN MERGE_REQ IN YES"
+        oldGroupMembers = [mem for mem in self.group.members]
         if msg["source"] == self.lgroup.leader:
-          self.group = merge("left")
+          self.group = self.handle_merge("left")
           self.lgroup = msg["newNeighbor"]
 
           neighbor_id = self.rgroup.leader
@@ -880,35 +914,43 @@ class Node(object):
           which = "leftMerge"
 
         elif msg["source"] == self.rgroup.leader:
-          self.group = merge("right")
-          self.rgroup = msg["newNeighbor"]
+
+          self.group = self.handle_merge("right")
+          print "survived merge"
+          self.rgroup = dictToGroup(msg["newNeighbor"])
           neighbor_id = self.lgroup.leader
           neighbor_fwd = msg["newNeighbor"]
           which = "rightMerge"
         else:
           print "NOT LEADER OF GROUP??"
           neighbor = None
-  
+          return
         commit_msg = ({ "parent": msg["parent"] , "destination": [msg["source"]], 
-                        "source": self.name, "type": "COMMIT", "key": "MERGE_REQ", 
-                        "value": (self.lgroup,self.group,self.rgroup), "store": self.store})
+                        "source": self.name, "type": "COMMIT", "key": "MERGE","value":"MERGE_REQ", 
+                        "newGroup": (groupToDict(self.lgroup),groupToDict(self.group),groupToDict(self.rgroup)), "store": self.store})
         self.pending_reqs.append( ("commit", commit_msg["key"], commit_msg["value"], commit_msg["destination"][0]))
         self.SEND_MSG(commit_msg)
+        print "sent commit message to merger",commit_msg
 
-        learn_msg = ({"parent": msg["parent"] ,"destination": self.group.members, "source" : self.name, 
+        learn_msg = ({"parent": msg["parent"] ,"destination": oldGroupMembers, "source" : self.name, 
                       "type": "LEARN", "key": "GROUPS","p_num":self.group.p_num, 
-                      "value": (self.lgroup,self.group,self.rgroup), "store": msg["store"]})
+                      "value": (groupToDict(self.lgroup),groupToDict(self.group),groupToDict(self.rgroup)), "store": msg["store"]})
         self.SEND_MSG(learn_msg)
+        print "sent learn merger to my own",learn_msg
 
-        neighbor_msg = ({"parent": msg["parent"] , "destination": [neighbor_id.leader], "source": self.name,
-                         "type": "COMMIT", "key": "MERGE_ID", "which": which, "value": (self.group)})
-        self.pending_reqs.append( ("commit", neighbor_msg["key"], neighbor_msg["value"], neighbor_msg["destination"] ) )
+        neighbor_msg = ({"parent": msg["parent"] , "destination": [neighbor_id], "source": self.name,"value":"MERGE_ID",
+                         "type": "COMMIT", "key": "MERGE", "which": which, "newGroup": groupToDict(self.group)})
+        self.pending_reqs.append( ("commit", neighbor_msg["key"], neighbor_msg["value"], neighbor_msg["destination"][0] ) )
         self.SEND_MSG(neighbor_msg)
+        print "sent commit merger neighbor",neighbor_msg
 
-        neighbor2_msg = ({"parent": msg["parent"] , "source": self.name, "destination": [neighbor_fwd.leader], 
-                          "type": "COMMIT", "key": "MERGE_FWD","which": which, "value": (self.group)})
-        self.pending_reqs.append( ("commit", neighbor_msg2["key"], neighbor_msg2["value"], neighbor_msg2["destination"] ) )
-        self.SEND_MSG(neighbor2_msg)
+        other_leader = dictToGroup(neighbor_fwd).leader
+        print "\n\n",other_leader,"\n\n"
+        neighbor2_msg = ({"parent": msg["parent"] , "source": self.name, "destination": [other_leader],"key":"MERGE", 
+                          "type": "COMMIT", "value": "MERGE_FWD","which": which, "newGroup": groupToDict(self.group)})
+
+        self.pending_reqs.append( ("commit", neighbor2_msg["key"], neighbor2_msg["value"], neighbor2_msg["destination"][0] ) )
+        print "sent commit merger neighbor",neighbor_msg
        #########################
        #### SPLIT,ADD,DROP #####
        #########################         
@@ -920,14 +962,14 @@ class Node(object):
           print "second yes!"
           del self.okays[ msg["key"] ]
           yes_paxos = ({"parent": msg["parent"], "source": self.name, "destination": [self.group.leader], 
-                              "type": "PROPOSE", "key": "YES","value": msg["key"],
+                              "type": "PROPOSE", "key": "YES","value": msg["key"],"tpcFROM":msg["source"],
                                "who" : msg["value"],"p_num":self.group.p_num})
           self.SEND_MSG(yes_paxos)
           print "sent yes to paxos",yes_paxos
           return
       else:
         self.SEND_MSG({"parent": msg["parent"], "source": self.name, "destination": [self.group.leader], 
-                            "type": "PROPOSE", "key": "YES",
+                            "type": "PROPOSE", "key": "YES","tpcFROM":msg["source"],
                             "p_num":self.group.p_num,"value": msg["key"], "who" : msg["value"]})
 
      #######################
@@ -963,10 +1005,10 @@ class Node(object):
 
         neighborL_msg = ({"parent": msg["parent"] , "destination": [self.lgroup.leader], "source": self.name,
                           "type": "COMMIT", "key": "SPLIT","which": "yourRight", "value": (g1)})
-        self.pending_reqs.append( ("commit", neighborL_msg["key"], neighborL_msg["value"], neighborL_msg["destination"] ) )
+        self.pending_reqs.append( ("commit", neighborL_msg["key"], neighborL_msg["value"], neighborL_msg["destination"][0] ) )
         neighborR_msg = ({"parent": msg["parent"] , "destination": [self.rgroup.leader], "source": self.name,
                           "type": "COMMIT", "key": "SPLIT","which": "yourLeft", "value": (g2)})
-        self.pending_reqs.append( ("commit", neighborR_msg["key"], neighborR_msg["value"], neighborR_msg["destination"] ) )
+        self.pending_reqs.append( ("commit", neighborR_msg["key"], neighborR_msg["value"], neighborR_msg["destination"][0] ) )
 
 
         self.SEND_MSG(learn_msg1)
@@ -991,11 +1033,11 @@ class Node(object):
         
         neighborL_msg = ({"parent": msg["parent"] , "destination": [self.lgroup.leader], "source": self.name,
                           "type": "COMMIT", "key": "ADD_OTHER","which": "yourRight", "value": msg["who"] })
-        self.pending_reqs.append( ("commit", neighborL_msg["key"], neighborL_msg["value"], neighborL_msg["destination"] ) )
+        self.pending_reqs.append( ("commit", neighborL_msg["key"], neighborL_msg["value"], neighborL_msg["destination"][0] ) )
 
         neighborR_msg = ({"parent": msg["parent"] , "destination": [self.rgroup.leader], "source": self.name,
                           "type": "COMMIT", "key": "ADD_OTHER","which": "yourLeft", "value": msg["who"] })
-        self.pending_reqs.append( ("commit", neighborR_msg["key"], neighborR_msg["value"], neighborR_msg["destination"] ) )
+        self.pending_reqs.append( ("commit", neighborR_msg["key"], neighborR_msg["value"], neighborR_msg["destination"][0] ) )
 
         self.SEND_MSG(learn_msg)
         self.SEND_MSG(neighborL_msg)
@@ -1009,11 +1051,11 @@ class Node(object):
 
         neighborL_msg = ({"parent": msg["parent"] , "destination": [self.lgroup.leader], "source": self.name,
                           "type": "COMMIT", "key": "DROP_OTHER","which": "yourRight", "value": msg["who"]})
-        self.pending_reqs.append(("commit", neighborL_msg["key"], neighborL_msg["value"], neighborL_msg["destination"]))
+        self.pending_reqs.append(("commit", neighborL_msg["key"], neighborL_msg["value"], neighborL_msg["destination"][0]))
 
         neighborR_msg = ({"parent": msg["parent"] , "destination": [self.rgroup.leader], "source": self.name,
                                        "type": "COMMIT", "key": "DROP_OTHER","which": "yourLeft", "value": msg["who"] })
-        self.pending_reqs.append( ("commit", neighborR_msg["key"], neighborR_msg["value"], neighborR_msg["destination"] ) )
+        self.pending_reqs.append( ("commit", neighborR_msg["key"], neighborR_msg["value"], neighborR_msg["destination"][0] ) )
 
         self.SEND_MSG(learn_msg)
         self.SEND_MSG(neighborL_msg)
@@ -1023,10 +1065,10 @@ class Node(object):
          ################
       elif msg["value"] == "MERGE":
         print "IN yes_paxosed MERGE",msg
-        if msg["source"] == self.lgroup.leader:
+        if msg["tpcFROM"] == self.lgroup.leader:
           dest = self.rgroup.leader
           groupInfo = self.lgroup
-        elif msg["source"] == self.rgroup.leader:
+        elif msg["tpcFROM"] == self.rgroup.leader:
           dest = self.lgroup.leader
           groupInfo = self.rgroup
         else:
@@ -1039,13 +1081,16 @@ class Node(object):
           new_msg = {"parent": msg["parent"], "type": "READY", "destination": [dest], "source": self.name, 
                      "key": "MERGE", "value": "MERGE_REQ"}
           self.SEND_MSG(new_msg)
+          print "sent merge_req other way",new_msg
           ###################
           #### MERGE_FWD #####
           ###################
         elif msg["who"] == "MERGE_FWD":
+          print "IN MERGE_FWD ON YES_PAXOSED"
           new_msg = {"parent": msg["parent"], "type": "YES", "destination": [dest], "source": self.name,
-                     "key": "MERGE", "value": "MERGE_REQ", "newNeighbor" : groupInfo, "store" : self.store}
+                     "key": "MERGE", "value": "MERGE_REQ", "newNeighbor" : groupToDict(groupInfo), "store" : self.store}
           self.SEND_MSG(new_msg)
+          print "sent req yes to original",new_msg
           
 
                      #######################
@@ -1069,6 +1114,7 @@ class Node(object):
 
       self.SEND_MSG({"parent":  msg["parent"] ,"destination": self.group.members, "source": self.name, 
                           "type": "LEARN", "key": "UNBLOCK","p_num":self.group.p_num})
+      print "sent unblock"
 
                      ################
                      #### SPLIT #####
@@ -1097,14 +1143,28 @@ class Node(object):
                      #### MERGE_ID #####
                      ###################
         if msg["value"] == "MERGE_ID":
-          if msg["which"] == "leftMerge":
+          print "in Merge ID Commit response",msg["which"]
+          ngroup = dictToGroup(msg["newGroup"])
+          lBound1,rBound1 = int(ngroup.key_range[0]),int(ngroup.key_range[1])
+          lBound2,rBound2 = int(self.group.key_range[0]),int(self.group.key_range[1])
+
+          if (rBound1 == lBound2 and  lBound1 == rBound2) or \
+             (lBound1 == MIN_KEY and rBound1 == lBound2 and rBound2 == MAX_KEY) or \
+             (rBound1 == MAX_KEY and lBound1 == rBound2 and lBound2 == MIN_KEY):
+            print "ONLY TWO GROUPS"
             learn_msg = ({ "destination": self.group.members, "source" : self.name,
                            "type": "LEARN","p_num":self.group.p_num,
-                           "key": "GROUPS", "value": (msg["value"],self.group,self.rgroup), "store": dict()})
+                           "key": "GROUPS", "value": (msg["newGroup"],groupToDict(self.group),msg["newGroup"]), "store": dict()})
+          elif msg["which"] == "leftMerge":
+            learn_msg = ({ "destination": self.group.members, "source" : self.name,
+                           "type": "LEARN","p_num":self.group.p_num,
+                           "key": "GROUPS", "value": (msg["newGroup"],groupToDict(self.group),groupToDict(self.rgroup)), "store": dict()})
           elif msg["which"] == "rightMerge":
+            print "rightMerge"
             learn_msg = ({ "parent" : msg["parent"] ,"destination": self.group.members,
                            "source" : self.name, "type": "LEARN","p_num":self.group.p_num,
-                           "key": "GROUPS", "value": (self.lgroup, self.group, msg["value"]), "store": dict()})
+                           "key": "GROUPS", "value": (groupToDict(self.lgroup), groupToDict(self.group), msg["newGroup"]),
+                           "store": dict()})
           else:
             print "Commit illformed w/o which field"
           self.SEND_MSG(learn_msg)
@@ -1113,16 +1173,27 @@ class Node(object):
                      #### MERGE_REQ #####
                      ####################
         elif msg["value"] == "MERGE_REQ":
+          print "IN MERGE REQ"
           learn_msg = ({"parent" : msg["parent"] ,"destination": self.group.members,
                          "source" : self.name, "type": "LEARN", "p_num":self.group.p_num,
-                        "key": "GROUPS", "value": (msg["value"]), "store" : msg["store"]})
+                        "key": "GROUPS", "value": (msg["newGroup"]), "store" : msg["store"]})
           self.SEND_MSG(learn_msg)  
           print "SENT LEARN",learn_msg     
                      ####################
                      #### MERGE_FWD #####
                      ####################
         elif msg["value"] == "MERGE_FWD":
-          if msg["which"] == "rightMerge":
+          lBound1,rBound1 = int(ngroup.key_range[0]),int(ngroup.key_range[1])
+          lBound2,rBound2 = int(self.group.key_range[0]),int(self.group.key_range[1])
+
+          if (rBound1 == lBound2 and  lBound1 == rBound2) or \
+             (lBound1 == MIN_KEY and rBound1 == lBound2 and rBound2 == MAX_KEY) or \
+             (rBound1 == MAX_KEY and lBound1 == rBound2 and lBound2 == MIN_KEY):
+            print "ONLY TWO GROUPS"
+            learn_msg = ({ "destination": self.group.members, "source" : self.name,
+                           "type": "LEARN","p_num":self.group.p_num,
+                           "key": "GROUPS", "value": (msg["newGroup"],groupToDict(self.group),msg["newGroup"]), "store": dict()})
+          elif msg["which"] == "rightMerge":
             learn_msg = ({"parent" : msg["parent"] ,"destination": self.group.members,
                          "source" : self.name, "type": "LEARN", "p_num":self.group.p_num,
                           "key": "GROUPS", "value": (msg["value"],self.group,self.rgroup), "store": dict()})
@@ -1137,14 +1208,15 @@ class Node(object):
                      #########################
                      #### ADD/DROP_OTHER #####
                      #########################
-        elif msg["key"] == "ADD_OTHER" or msg["key"] == "DROP_OTHER":
+      elif msg["key"] == "ADD_OTHER" or msg["key"] == "DROP_OTHER":
 
           learn_msg = ({  "parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, 
                           "type": "LEARN", "key": msg["key"],"p_num":self.group.p_num,
                            "value": (msg["value"]), "which" : msg["which"] })
           self.SEND_MSG(learn_msg)
+          print "sent learn add_other",learn_msg
 
-        elif msg["key"] == "ELECTION":
+      elif msg["key"] == "ELECTION":
           if msg["source"] in self.rgroup.members:
             learn_msg = {"parent": msg["parent"], "destination": self.group.members, "source": self.name,
                          "type": "LEARN", "key": msg["key"],"p_num":self.group.p_num,
@@ -1157,11 +1229,21 @@ class Node(object):
             learn_msg = None
           self.SEND_MSG(learn_msg)
           print "SENT LEARN",lean_msg
-        else:
-          raise Exception("This isnt a valid Commit type={}".format(typ))
       else:
+          raise Exception("This isnt a valid Commit type={}".format(typ))
+    else:
         raise Exception("wow how did that happen")
-
+  '''
+  def shouldBlock(self,msg):
+    print "in shouldBlock"
+    if self.BLOCK_2PC == None or msg["type"] in TWOPC_UNBLOCKED:
+      return False
+    if self.BLOCK_2PC[0] == (msg["parent"]):
+      if self.BLOCK_2PC[0] == "MERGE":
+        if msg["key"] in ["MERGE","MERGE_REQ","MERGE_FWD","MERGE_ID"]:
+          return False
+    return True 
+  '''
   def send_spam(self):
     '''
     Periodically send spam, with a counter to see which are dropped.
@@ -1199,10 +1281,11 @@ def dictToGroup(g):
               int(g["p_num"])
               )
 
-def make_paxos_msg(typ, dst, src, key, value, p_num, prior_proposal, parent, who):
+
+def make_paxos_msg(typ, dst, src, key, value, p_num, prior_proposal, parent, who, tpcFROM):
   if dst == None: print "\n\nMASSIVE ERROR - NO DST\n\n"
   return {"type": typ, "destination": dst, "source": src, "key": key, "value": value, 
-          "p_num": p_num, "prior_proposal": prior_proposal, "parent": parent, "who": who}
+          "p_num": p_num, "prior_proposal": prior_proposal, "parent": parent, "who": who, "tpcFROM":tpcFROM}
 
 if __name__ == '__main__':
   import argparse
