@@ -147,7 +147,8 @@ class Node(object):
 
     print "I,",self.name,", AM ALIVE", "\n"
     self.loop.start()
-    self.loop.add_callback(self.housekeeping)
+    print "STARTING"
+    #self.loop.add_callback(self.housekeeping)
 
   def housekeeping(self):
     if self.pong:
@@ -258,6 +259,7 @@ class Node(object):
     if typ == 'hello':
       if not self.connected:
         self.connected = True
+        self.loop.add_callback(self.housekeeping)
         self.req.send_json({'type': 'helloResponse', 'source': self.name})
         print self.name,"sent message",{'type': 'helloResponse', 'source': self.name},"\n"
         # if we're a spammer, start spamming!
