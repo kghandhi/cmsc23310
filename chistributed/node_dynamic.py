@@ -10,6 +10,7 @@ from datetime import datetime as dt
 from datetime import timedelta
 from zmq.eventloop import ioloop, zmqstream
 ioloop.install()
+sys.stdout = open("logging", "w")
 
 MAX_GROUP = 10
 MIN_GROUP = 2
@@ -61,10 +62,14 @@ class Node(object):
     self.req.on_recv(self.handle_broker_message)
 
     self.name = node_name
-   
-    self.group = Group((key_range[0], key_range[1]), peer_names[0], peer_names, 1)  #group object   
-    self.lgroup = Group((key_range1[0], key_range1[1]), pred_names[0], pred_names, 1) #group object
-    self.rgroup = Group((key_range2[0], key_range2[1]), succ_names[0], succ_names, 1) #group object
+    if key_range1 and succ_names and key_range2 and key_range and pred_names:
+      self.group = Group((key_range[0], key_range[1]), peer_names[0], peer_names, 1)  #group object   
+      self.lgroup = Group((key_range1[0], key_range1[1]), pred_names[0], pred_names, 1) #group object
+      self.rgroup = Group((key_range2[0], key_range2[1]), succ_names[0], succ_names, 1) #group object
+    else:
+      self.group = Group(None, None, peer_names, 1)
+      self.lgroup = None
+      self.rgroup = None
 
     self.store = dict()
 
@@ -150,52 +155,58 @@ class Node(object):
     print "STARTING"
     #self.loop.add_callback(self.housekeeping)
 
-  def housekeeping(self):
-    print "IN HOUSEKEEPING"
-    if self.pong:
-      for dead_member in self.pong:
-        proposal = {"type": "START", "destination": [self.group.leader], "source": self.name, 
-                    "key": "DROP", "value": dead_member}
-        self.req.send_json(proposal)
+  # def housekeeping(self):
+  #   if not self.group or not self.rgroup or not self.lgroup:
+  #     print "LETS ADD YOU NODE 9!"
+  #     if self.group:
+  #       proposal = {"type": "START", "destination": self.group.members, "source": self.name, 
+  #                   "key": "ADD", "value": self.name}
+  #       self.req.send_json(proposal)
+  #   else:    
+  #     if self.pong:
+  #       for dead_member in self.pong:
+  #         proposal = {"type": "START", "destination": [self.group.leader], "source": self.name, 
+  #                     "key": "DROP", "value": dead_member}
+  #         self.req.send_json(proposal)
 
-    if self.name not in self.group.members:
-      self.req.send_json({"type": "START", "destination": [self.group.pleader], "source": self.name, 
-                          "key": "ADD", "value": self.name})
+  #     if self.name not in self.group.members:
+  #       self.req.send_json({"type": "START", "destination": [self.group.pleader], "source": self.name, 
+  #                           "key": "ADD", "value": self.name})
 
-    if self.group.leader == self.name:
-      # Split if you have too many members
-      if (len(self.group.members) > MAX_GROUP):
-        self.req.send_json({"type": "START", "destination": [self.group.leader], "source": self.name,
-                            "key": "SPLIT", "value": "SPLIT"})
-      # Merge with a neighbor if you have too few members
-      if (len(self.group.members) < MIN_GROUP):
-        self.req.send_json({"type": "START", "destination": [self.group.leader], "source": self.name,
-                            "key": "MERGE", "value": "MERGE_ID"})
-    if self.pending_reqs:
-      for unhandled in self.pending_reqs:
-        if unhandled[0] == "get":
-          handle = {"type": "getRelay", "source": self.name, "destination": [self.group.leader], 
-                    "key": unhandled[1]}
-        elif unhandled[0] == "set":
-          stset, key, value = unhandled
-          handle = {"type": "setRelay", "source": self.name, "destination": [self.group.leader], 
-                    "key": key, "value": value}
-        else:
-          commit, key, value, dest = unhandled
-          handle = {"type": "COMMIT", "source": self.name, "destination": [dest], "key": key, 
-                    "value": value}
-        self.req.send_json(handle)
+  #     if self.group.leader == self.name:
+  #       # Split if you have too many members
+  #       if (len(self.group.members) > MAX_GROUP):
+  #         self.req.send_json({"type": "START", "destination": [self.group.leader], "source": self.name,
+  #                             "key": "SPLIT", "value": "SPLIT"})
+  #     # Merge with a neighbor if you have too few members
+  #     if (len(self.group.members) < MIN_GROUP):
+  #       self.req.send_json({"type": "START", "destination": [self.group.leader], "source": self.name,
+  #                           "key": "MERGE", "value": "MERGE_ID"})
+  #     if self.pending_reqs:
+  #       for unhandled in self.pending_reqs:
+  #         if unhandled[0] == "get":
+  #           handle = {"type": "getRelay", "source": self.name, "destination": [self.group.leader], 
+  #                     "key": unhandled[1]}
+  #         elif unhandled[0] == "set":
+  #           stset, key, value = unhandled
+  #           handle = {"type": "setRelay", "source": self.name, "destination": [self.group.leader], 
+  #                     "key": key, "value": value}
+  #         else:
+  #           commit, key, value, dest = unhandled
+  #           handle = {"type": "COMMIT", "source": self.name, "destination": [dest], "key": key, 
+  #                     "value": value}
+  #         self.req.send_json(handle)
 
-    if not self.group.leader:
-      proposal = {"type": "PROPOSE", "destination": [self.name], "source": self.name, 
-                  "key": "ELECTION", "value": self.name, "parent": self.name, "who": None}
-      self.req.send_json(proposal)
+  #     if not self.group.leader:
+  #       proposal = {"type": "PROPOSE", "destination": [self.name], "source": self.name, 
+  #                   "key": "ELECTION", "value": self.name, "parent": self.name, "who": None}
+  #       self.req.send_json(proposal)
 
-    self.pong = [mem for mem in self.group.members]
-    for mem in self.pong:
-      ping = {"type": "PING", "destination": [mem], "source": self.name}
+  #     self.pong = [mem for mem in self.group.members]
+  #     for mem in self.pong:
+  #       ping = {"type": "PING", "destination": [mem], "source": self.name}
 
-    self.loop.add_timeout(time.time() + TIME_LOOP, self.housekeeping)
+  #   self.loop.add_timeout(time.time() + TIME_LOOP, self.housekeeping)
 
   def handle_broker_message(self, msg_frames):
     '''
@@ -260,7 +271,7 @@ class Node(object):
     if typ == 'hello':
       if not self.connected:
         self.connected = True
-        self.loop.add_callback(self.housekeeping)
+        #self.loop.add_callback(self.housekeeping) #
         self.req.send_json({'type': 'helloResponse', 'source': self.name})
         print self.name,"sent message",{'type': 'helloResponse', 'source': self.name},"\n"
         # if we're a spammer, start spamming!
@@ -269,7 +280,7 @@ class Node(object):
       return
 
     elif typ == 'spam':
-      self.req.send_json({'type': 'log', 'spam': msg})
+      #self.req.send_json({'type': 'log', 'spam': msg})
       print ""
       return
 
@@ -336,7 +347,7 @@ class Node(object):
         print self.store,k
         try:
           v = self.store[long(k)]
-          self.req.send_json({'type': 'log', 'debug': {'event': 'getting', 'node': self.name, 'key': k, 'value': v}})
+          #self.req.send_json({'type': 'log', 'debug': {'event': 'getting', 'node': self.name, 'key': k, 'value': v}})
           if typ == "get":
             self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': v})
           else:
@@ -385,7 +396,7 @@ class Node(object):
                             'value': v, 'prior': None, "p_num": self.group.p_num, "parent":parent})
         print "SENT",{'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, "who": self.name,
                             'value': v, 'prior': None, "p_num": self.group.p_num, "parent":parent}
-        self.req.send_json({'type': 'log', 'debug': {'event': 'setting', 'node': self.name, 'key': k, 'value': v}})
+        #self.req.send_json({'type': 'log', 'debug': {'event': 'setting', 'node': self.name, 'key': k, 'value': v}})
         #self.req.send_json({'type': 'setResponse', 'id': msg['id'], 'value': v}) 
         print "SENT",{'type': 'setResponse', 'id': msg['id'], 'value': v}
       else:
@@ -404,7 +415,8 @@ class Node(object):
         self.pending_reqs.remove(msg["req"])
         
     else:
-      self.req.send_json({'type': 'log', 'debug': {'event': 'unknown', 'node': self.name}})
+      return
+      #self.req.send_json({'type': 'log', 'debug': {'event': 'unknown', 'node': self.name}})
 
   #################################
   #######    HANDLE         #######
@@ -1013,14 +1025,13 @@ if __name__ == '__main__':
   parser.add_argument('--key-range2', dest='key_range2',
                       type=str, default='')
   args = parser.parse_args()
-  print str(len(args.key_range.split(',')))
   args.peer_names = args.peer_names.split(',')
   args.key_range = args.key_range.split(',')
   args.key_range1 = args.key_range1.split(',')
   args.key_range2 = args.key_range2.split(',')
   args.pred_group = args.pred_group.split(',')
   args.succ_group = args.succ_group.split(',')
- 
+
   Node(args.node_name, args.pub_endpoint, args.router_endpoint, args.spammer,
        args.peer_names, args.key_range, args.pred_group, args.key_range1, 
        args.succ_group, args.key_range2).start()
