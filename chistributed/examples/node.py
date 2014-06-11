@@ -154,7 +154,7 @@ class Node(object):
   def housekeeping(self):
 
     print "\n\nIN HOUSEKEEPING"
-
+    return
     #######################
     #HEARTBEATS
     #######################
