@@ -13,7 +13,8 @@ ioloop.install()
 
 MAX_GROUP = 10
 MIN_GROUP = 2
-MAX_KEY = int('f'*128, 16)
+#MAX_KEY = int('f'*128, 16)
+MAX_KEY = 32
 TIME_LOOP = 2 #how often we house keep
 
 TWOPC_MESSAGES = ["START","START_PAXOSED", "READY","READY_PAXOSED", "YES","YES_PAXOSED",
@@ -201,8 +202,10 @@ class Node(object):
     pass
 
   def forwardTo(self, key):
-    lbound = self.group.key_range[0]
-    rbound = self.group.key_range[1]
+    lbound = long(self.group.key_range[0])
+    rbound = long(self.group.key_range[1])
+    key = long(key)
+    print lbound,rbound,key
     if (lbound < rbound):
       if lbound <= key and key < rbound:
         if self.group.leader:
@@ -210,7 +213,7 @@ class Node(object):
         else:
           return self.name
       elif key < lbound:
-        if abs(key - lbound) > key + (MAX_KEY - rbound):
+        if abs((key) - (lbound)) > (key) + (MAX_KEY - rbound):
           return self.rgroup.leader
         else:
           return self.lgroup.leader
@@ -307,7 +310,12 @@ class Node(object):
     #############
     #### GET ####
     #############
-    if typ == 'get' or typ == 'getRelay':
+    if typ == "fwd_getResponse":
+      print "IN GETRESPONSE_FWD"
+      self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': msg["value"]}) 
+      print "SENT getResponse TO BROKER"
+
+    elif typ == 'get' or typ == 'getRelay':
       print "MESSAGE: GET", msg["key"]
       k = msg['key']
 
@@ -322,15 +330,21 @@ class Node(object):
       dest = self.forwardTo(k)
       print "DESTINATION IS",dest
       if dest == self.group.leader or dest == self.name:
+        print self.store,k
         try:
-          v = self.store[k]
+          v = self.store[long(k)]
           self.req.send_json({'type': 'log', 'debug': {'event': 'getting', 'node': self.name, 'key': k, 'value': v}})
-          self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': v})
+          if typ == "get":
+            self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': v})
+          else:
+            self.req.send_json({'type': 'fwd_getResponse', "destination":[msg["parent"][0]], 'id': msg["parent"][1], 'value': v})
           print "sent msg", {'type': 'getResponse', 'id': msg['id'], 'value': v}
         except KeyError:
           print "Oops! That is not a key for which we have a value. Try again..."
       else:
         self.req.send_json({'type' : 'getRelay', 'parent' : parent, 'destination': [dest],
+                           'id' : msg['id'], 'key': msg['key']})
+        print "sent getRelay",({'type' : 'getRelay', 'parent' : parent, 'destination': [dest],
                            'id' : msg['id'], 'key': msg['key']})
       if typ == "getRelay":
         self.req.send_json({"destination": [msg["source"]], "source": self.name, "parent" : parent,
@@ -361,6 +375,7 @@ class Node(object):
 
       self.pending_reqs.append(("set", k, v))
       dest = self.forwardTo(k)
+      print "survived forwardTo",dest
       if dest == self.group.leader or dest == self.name:
 
         self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, "who": self.name, 
@@ -372,10 +387,14 @@ class Node(object):
         print "SENT",{'type': 'setResponse', 'id': msg['id'], 'value': v}
       else:
         self.req.send_json({'type' : 'setRelay', 'destination': [dest],'id' : msg['id'], 
+                            'key': msg['key'], 'value' : msg['value'], "parent":parent, "source":self.name})
+        print "SENT SETRELAY",({'type' : 'setRelay', 'destination': [dest],'id' : msg['id'], 
                             'key': msg['key'], 'value' : msg['value'], "parent":parent})
       if typ == "setRelay":
+        print "AM I ALIVE?",
         self.req.send_json({"type": "SET_ACK", "destination": [msg["source"]], 
                             "source": self.name, "req": ("set", k, v), "parent":parent})
+        print "STILL??"
 
     elif typ == "set_ack":
       if msg["req"] in self.pending_reqs:
@@ -395,8 +414,8 @@ class Node(object):
     typ = msg["type"]
     key = msg["key"]
     n = msg["p_num"]
-    self.accs = [m for m in self.group.members if m != self.name]
-    if self.group.leader == self.name or key == "LEADER":
+    self.accs = [m for m in self.group.members]
+    if (self.group.leader == self.name or key == "LEADER") and typ != "LEARN":
       if typ == "PROPOSE":       
           if self.group.p_num not in self.proposals:
             self.proposals[self.group.p_num] = msg["value"]
@@ -451,7 +470,6 @@ class Node(object):
             self.accepts[n].append((msg["value"], n))
           else:
             self.accepts[n] = [(msg["value"], n)]
-            self.accepts[n] = [(msg["value"], n)] ###########ADDED ONE TO ACCOUNT FOR PROPOSERS VOTE???
           if (len(self.accepts[n]) == majority):
               print "SUCCESSFUL PAXOS",n,self.props_accepted,key
               if n not in self.props_accepted:
@@ -476,11 +494,12 @@ class Node(object):
                     new_msg = make_paxos_msg("LEARN", [member], self.name, key, msg["value"], n, 
                                              None, msg["parent"], msg["who"])
                     self.req.send_json(new_msg)
+
                     print "SENT LEARN", new_msg
-                  print "pre send IMPORTANT"
+
                   self.req.send_json({'type': 'fwd_setResponse', 'destination' : [msg["parent"][0]],
                                  "id":msg["parent"][1], 'value': msg["value"], "source":self.name})  
-                  print "post send IMPORTANT"
+                  print "sent "
       elif typ == "REDIRECT":
           if key not in self.redirects:
             self.redirects[key] = []
