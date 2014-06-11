@@ -25,6 +25,8 @@ PAXOS_MESSAGES = ["PROPOSE","PROMISE", "PREPARE", "ACCEPT", "ACCEPTED", "REJECTE
 
 DHT_MESSAGES = ["get","getRelay","fwd_getResponse","get_ack","set","setRelay","fwd_setResponse","set_ack"]
 
+LOG_PAXOS = False
+
 class Group(object):
   def __init__(self, key_range, leader, members, p_num):
     self.key_range = key_range #tuple [a,b)
@@ -290,8 +292,9 @@ class Node(object):
     # Second field is the empty delimiter
 
     msg = json.loads(msg_frames[2])
-    #print self.name , "recieved message: ", msg
+    
     typ = msg['type']
+
     if typ == "PROPOSE":
       print "\n\n\t\tMY PROPOSE MSG",msg["key"],msg["value"],"\n\n"
 
@@ -304,6 +307,7 @@ class Node(object):
       return 
 
     elif typ in PAXOS_MESSAGES:
+      if LOG_PAXOS: print self.name , "recieved message: ", msg
       self.handle_paxos(msg)
       return
 
@@ -311,6 +315,7 @@ class Node(object):
       if self.name != self.group.leader:
         msg["destination"] = [self.group.leader]
         self.req.send_json(msg)
+        print "FWD'ed msg to leader",msg
       elif self.BLOCK_2PC == None or self.BLOCK_2PC == (msg["parent"],msg["key"]) or msg["type"] in TWOPC_UNBLOCKED:
         self.handle_2pc(msg) 
       else: 
@@ -474,8 +479,8 @@ class Node(object):
   #################################
 
   def handle_paxos(self, msg):
-    print "\n"
-    print "RECEIVED PAXOS MESSAGE",msg["type"]
+    if LOG_PAXOS: print "\n"
+    if LOG_PAXOS: print "RECEIVED PAXOS MESSAGE",msg["type"],msg
     majority = math.ceil(len(self.group.members) / 2)
     typ = msg["type"]
     key = msg["key"]
@@ -490,14 +495,14 @@ class Node(object):
                                        self.group.p_num, None, msg["parent"], msg["who"])
 
               self.req.send_json(new_msg)
-              print "SENT PAXOS MESSAGE",new_msg
+              if LOG_PAXOS: print "SENT PAXOS MESSAGE",new_msg
           self.promises[self.group.p_num] = []
           self.group.p_num += 1
 
       elif typ == "PROMISE":
-          print "IN PROMISE",n,self.promises
+          if LOG_PAXOS: print "IN PROMISE",n,self.promises
           if n not in self.promises:
-            print "n not in self.promises",msg["prior_proposal"]
+            if LOG_PAXOS: print "n not in self.promises",msg["prior_proposal"]
             self.promises[n] = [] #this actually should be an error
           if (msg["prior_proposal"]):
               self.promises[n].append(msg["prior_proposal"])
@@ -512,7 +517,7 @@ class Node(object):
                 new_msg = make_paxos_msg("ACCEPT", [member], self.name, key, msg["value"], 
                                          n, None, msg["parent"], msg["who"])
                 self.req.send_json(new_msg)
-                print "SENT ACCEPT",new_msg
+                if LOG_PAXOS: print "SENT ACCEPT",new_msg
                 
       elif typ == "REJECTED":
           if n in self.rejects:
@@ -531,13 +536,13 @@ class Node(object):
               self.group.p_num += 1
                 
       elif typ == "ACCEPTED":
-          print "IN ACCEPTED",n,self.accepts,majority  
+          if LOG_PAXOS: print "IN ACCEPTED",n,self.accepts,majority  
           if n in self.accepts:
             self.accepts[n].append((msg["value"], n))
           else:
             self.accepts[n] = [(msg["value"], n)]
           if (len(self.accepts[n]) == majority):
-              print "SUCCESSFUL PAXOS",n,self.props_accepted,key
+              if LOG_PAXOS: print "SUCCESSFUL PAXOS",n,self.props_accepted,key
               if n not in self.props_accepted:
 
                 self.props_accepted[n] = (self.proposals[n], msg["value"])
@@ -552,7 +557,7 @@ class Node(object):
                   self.req.send_json({"parent": msg["parent"], "type": "YES_PAXOSED", "destination": [self.group.leader], 
                                       "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
                 else:
-                  print "LEARN ELECTION OR KEY"
+                  if LOG_PAXOS: print "LEARN ELECTION OR KEY"
                   if key == "ELECTION":
                     self.req.send_json({"type": "COMMIT", "destination": [self.lgroup.leader, self.rgroup.leader], 
                                         "source": self.name, "value": msg["value"], "key": key, "who": msg["who"]})
@@ -561,11 +566,11 @@ class Node(object):
                                              None, msg["parent"], msg["who"])
                     self.req.send_json(new_msg)
 
-                    print "SENT LEARN", new_msg
+                    if LOG_PAXOS: print "SENT LEARN", new_msg
 
                   self.req.send_json({'type': 'fwd_setResponse', 'destination' : [msg["parent"][0]],
                                  "id":msg["parent"][1], 'value': msg["value"], "source":self.name})  
-                  print "sent "
+                  if LOG_PAXOS: print "sent "
       elif typ == "REDIRECT":
           if key not in self.redirects:
             self.redirects[key] = []
@@ -574,48 +579,48 @@ class Node(object):
               new_msg = make_paxos_msg("PROPOSE", [msg["source"]], self.name, key, msg["value"], 
                                        n, None, msg["parent"], msg["who"])
       else:
-          print "This is not the type of message a proposer should be recieving"
+          if LOG_PAXOS: print "This is not the type of message a proposer should be recieving"
           self.req.send_json({'type': 'log', 'spam': msg})
 
     else:
       if typ == "PREPARE":
-        print "IN PREPARE HERE",key,self.n_int,n
+        if LOG_PAXOS: print "IN PREPARE HERE",key,self.n_int,n
         self.group.p_num += 1
         if key not in self.n_int:
 
           self.n_int[key] = -1 #initialize
         if n >= self.n_int[key]:
             if key in self.acced: # proposals that have been accepted for that key
-              print "here",self.acced
+              if LOG_PAXOS: print "here",self.acced
               high_p = sorted(self.acced[key], key=lambda x: x[1])[-1]
               self.n_int[key] = high_p[1] #send the latest (greatest) n
-              print "here again",high_p,self.n_int
+              if LOG_PAXOS: print "here again",high_p,self.n_int
             else:
-              print "in else case"
+              if LOG_PAXOS: print "in else case"
               high_p = None
               self.n_int[key] = n
-            print "About to make new msg",msg["parent"], msg["who"]
+            if LOG_PAXOS: print "About to make new msg",msg["parent"], msg["who"]
               
             new_msg = make_paxos_msg("PROMISE", [msg["source"]], self.name, msg["key"],msg["value"], 
                                      n, high_p, msg["parent"], msg["who"])
             self.req.send_json(new_msg)
-            print "SENT PREPARE",new_msg
+            if LOG_PAXOS: print "SENT PREPARE",new_msg
       elif typ == "ACCEPT":
           if self.n_int[key] <= n:
             new_msg = make_paxos_msg("ACCEPTED", [msg["source"]], self.name,msg["key"], msg["value"], 
                                      n, None, msg["parent"], msg["who"]) 
-            print "SENT ACCEPTED",msg
+            if LOG_PAXOS: print "SENT ACCEPTED",msg
             if key not in self.acced:
               self.acced[key] = []
               self.acced[key].append((msg["value"], n))
           else:
               new_msg = make_paxos_msg("REJECTED", [msg["source"]], self.name,msg["key"], msg["value"], 
                                        n, None, msg["parent"], msg["who"])
-              print "SENT REJECTED",msg
+              if LOG_PAXOS: print "SENT REJECTED",msg
           self.req.send_json(new_msg)
             
       elif typ == "LEARN":
-          print "IN LEARN",msg
+          if LOG_PAXOS: print "IN LEARN",msg
           if key == "ELECTION":
             if msg["which"]: 
               if msg["which"] == "right":
@@ -666,10 +671,10 @@ class Node(object):
             self.group.members.remove(msg["value"])
 
           else:
-            print "UPDATED STORE",key,msg["value"]
+            if LOG_PAXOS: print "UPDATED STORE",key,msg["value"]
             self.store[long(key)] = msg["value"]
       else:
-          print "This is not the type of message an acceptor should be receiving"
+          if LOG_PAXOS: print "This is not the type of message an acceptor should be receiving"
 
   #################
   #################
@@ -680,42 +685,55 @@ class Node(object):
 
   def handle_2pc(self, msg):
     typ = msg["type"]
-
+    print "\n"
      ###############
      #### START ####
      ###############
     if typ == "START":
+      print "2PC START",msg
       # INPUT type "START" , dest leader , source name , key SPLIT/MERGE/ADD/DROP , value SPLIT/MERGE_ID/NAME/NAME
-      self.req.send_json({"parent" : self.name ,"destination": [self.group], "type": "LEARN",
-                          "key": "BLOCK", "value": msg["value"]})
-      self.req.send_json({"parent" : self.name ,"destination": [self.group.leader], "type": "PROPOSE",
-                          "key": "START", "value": msg["key"] , "who" : msg["value"]})
+      block_msg = ({"parent" : self.name ,"destination": self.group.members, "type": "LEARN",
+                          "key": "BLOCK", "value": msg["value"],"p_num":self.group.p_num})
+      self.req.send_json(block_msg)
+      print "sent block",block_msg
+
+      paxos_start = ({"parent" : self.name ,"destination": [self.group.leader], "type": "PROPOSE",
+                          "key": "START", "value": msg["key"] , "who" : msg["value"],"p_num":self.group.p_num})
+      self.req.send_json(paxos_start)
+      print "sent start to paxos",paxos_start
+      print
       
      #######################
      #### START_PAXOSED ####
      #######################
     elif typ == "START_PAXOSED":
+      print "2PC START PAXOSED",msg
       #INPUT type start_paxosed, key start, value split/merge/add/drop , who split/merge_id/name/name
       if msg["value"] == "SPLIT" or msg["key"] == "ADD" or msg["key"] == "DROP":
         new_msg = { "parent":msg["parent"] ,"type": "READY", "destination": [self.lgroup.leader],
                     "source": self.name, "key": msg["value"], "value": msg["who"] }
         self.req.send_json(new_msg)
+        print "sent READY left",new_msg
+
         new_msg["destination"] = [self.rgroup.leader]
         self.req.send_json(new_msg)
+        print "sent READY right",new_msg
+        return
 
        ################
        #### MERGE #####
        ################
-    elif msg["value"] == "MERGE":
-      if len(self.group.members) + len(self.lgroup.members) < MAX_GROUP and len(self.lgroup.members) < len(self.rgroup.members):
-        new_msg = { "parent":msg["parent"] ,"type": "READY", "destination": [self.rgroup.leader],
-                    "source": self.name, "key": "MERGE", "value": "MERGE_ID"}
-      elif len(self.group.members) + len(self.rgroup.members) < MAX_GROUP :
-        new_msg = { "parent":msg["parent"] ,"type": "READY", "destination": [self.lgroup.leader], 
-                    "source": self.name, "key": "MERGE", "value": "MERGE_ID" }
-      else:
-          #dont merge
-        new_msg =({"parent" : self.name ,"destination": [self.group], "type": "LEARN", "key": "UNBLOCK", "value": msg["who"]})
+      elif msg["value"] == "MERGE":
+        if len(self.group.members) + len(self.lgroup.members) < MAX_GROUP and len(self.lgroup.members) < len(self.rgroup.members):
+          new_msg = { "parent":msg["parent"] ,"type": "READY", "destination": [self.rgroup.leader],
+                      "source": self.name, "key": "MERGE", "value": "MERGE_ID"}
+        elif len(self.group.members) + len(self.rgroup.members) < MAX_GROUP :
+          new_msg = { "parent":msg["parent"] ,"type": "READY", "destination": [self.lgroup.leader], 
+                      "source": self.name, "key": "MERGE", "value": "MERGE_ID" }
+        else:
+            #dont merge
+          new_msg =({"parent" : self.name ,"destination": [self.group], "type": "LEARN",
+                                 "key": "UNBLOCK", "value": msg["who"],"p_num":self.group.p_num})
 
         self.req.send_json(new_msg)
 
@@ -725,7 +743,7 @@ class Node(object):
     elif typ == "READY":
       # type READY , key split/merge/add/drop , value split/MERGE_ID/ / /name/name
       self.req.send_json({"parent" : msg["parent"] , "source": self.name, "destination": [self.group.leader], 
-                          "type": "PROPOSE", "key": "READY", "value": msg["key"] , "who" : msg["value"]})
+                "type": "PROPOSE", "key": "READY", "value": msg["key"] , "who" : msg["value"],"p_num":self.group.p_num})
     
      #######################
      #### READY_PAXOSED ####
@@ -738,7 +756,7 @@ class Node(object):
        #########################
       if msg["key"] == "SPLIT" or msg["key"] == "ADD" or msg["key"] == "DROP":
         self.req.send_json({"parent" : msg["parent"] ,"source": self.name, "destination": [self.group.leader], 
-                            "type": "LEARN", "key": "BLOCK", "value": msg["key"]})
+                            "type": "LEARN", "key": "BLOCK", "value": msg["key"],"p_num":self.group.p_num})
         response = {"parent":msg["parent"] ,"destination": [msg["source"]], "source": self.name, 
                     "type" : "YES", "key": msg["key"], "value": msg["who"]}
        ################
@@ -746,7 +764,7 @@ class Node(object):
        ################
       elif msg["key"] == "MERGE":
         self.req.send_json({"parent" : msg["parent"], "source": self.name, "destination": [self.group.leader], 
-                            "type": "LEARN", "key": "BLOCK", "value": "MERGE"})
+                            "type": "LEARN", "key": "BLOCK", "value": "MERGE","p_num":self.group.p_num})
          ###################
          #### MERGE_ID #####
          ###################
@@ -807,26 +825,26 @@ class Node(object):
           print "NOT LEADER OF GROUP??"
           neighbor = None
   
-          commit_msg = ({ "parent": msg["parent"] , "destination": [msg["source"]], 
-                          "source": self.name, "type": "COMMIT", "key": "MERGE_REQ", 
-                          "value": (self.lgroup,self.group,self.rgroup), "store": self.store})
-          self.pending_reqs.append( ("commit", commit_msg["key"], commit_msg["value"], commit_msg["destination"][0]))
-          self.req.send_json(commit_msg)
+        commit_msg = ({ "parent": msg["parent"] , "destination": [msg["source"]], 
+                        "source": self.name, "type": "COMMIT", "key": "MERGE_REQ", 
+                        "value": (self.lgroup,self.group,self.rgroup), "store": self.store})
+        self.pending_reqs.append( ("commit", commit_msg["key"], commit_msg["value"], commit_msg["destination"][0]))
+        self.req.send_json(commit_msg)
 
-          learn_msg = ({"parent": msg["parent"] ,"destination": self.group.members, "source" : self.name, 
-                        "type": "LEARN", "key": "GROUPS", 
-                        "value": (self.lgroup,self.group,self.rgroup), "store": msg["store"]})
-          self.req.send_json(learn_msg)
+        learn_msg = ({"parent": msg["parent"] ,"destination": self.group.members, "source" : self.name, 
+                      "type": "LEARN", "key": "GROUPS","p_num":self.group.p_num, 
+                      "value": (self.lgroup,self.group,self.rgroup), "store": msg["store"]})
+        self.req.send_json(learn_msg)
 
-          neighbor_msg = ({"parent": msg["parent"] , "destination": [neighbor_id.leader], "source": self.name,
-                           "type": "COMMIT", "key": "MERGE_ID", "which": which, "value": (self.group)})
-          self.pending_reqs.append( ("commit", neighbor_msg["key"], neighbor_msg["value"], neighbor_msg["destination"] ) )
-          self.req.send_json(neighbor_msg)
+        neighbor_msg = ({"parent": msg["parent"] , "destination": [neighbor_id.leader], "source": self.name,
+                         "type": "COMMIT", "key": "MERGE_ID", "which": which, "value": (self.group)})
+        self.pending_reqs.append( ("commit", neighbor_msg["key"], neighbor_msg["value"], neighbor_msg["destination"] ) )
+        self.req.send_json(neighbor_msg)
 
-          neighbor2_msg = ({"parent": msg["parent"] , "source": self.name, "destination": [neighbor_fwd.leader], 
-                            "type": "COMMIT", "key": "MERGE_FWD","which": which, "value": (self.group)})
-          self.pending_reqs.append( ("commit", neighbor_msg2["key"], neighbor_msg2["value"], neighbor_msg2["destination"] ) )
-          self.req.send_json(neighbor2_msg)
+        neighbor2_msg = ({"parent": msg["parent"] , "source": self.name, "destination": [neighbor_fwd.leader], 
+                          "type": "COMMIT", "key": "MERGE_FWD","which": which, "value": (self.group)})
+        self.pending_reqs.append( ("commit", neighbor_msg2["key"], neighbor_msg2["value"], neighbor_msg2["destination"] ) )
+        self.req.send_json(neighbor2_msg)
        #########################
        #### SPLIT,ADD,DROP #####
        #########################         
@@ -836,10 +854,12 @@ class Node(object):
         else:
           del self.okays[ msg["key"] ]
           self.req.send_json({"parent": msg["parent"], "source": self.name, "destination": [self.group.leader], 
-                              "type": "PROPOSE", "key": "YES","value": msg["key"], "who" : msg["value"]})
+                              "type": "PROPOSE", "key": "YES","value": msg["key"],
+                               "who" : msg["value"],"p_num":self.group.p_num})
       else:
         self.req.send_json({"parent": msg["parent"], "source": self.name, "destination": [self.group.leader], 
-                            "type": "PROPOSE", "key": "YES","value": msg["key"], "who" : msg["value"]})
+                            "type": "PROPOSE", "key": "YES",
+                            "p_num":self.group.p_num,"value": msg["key"], "who" : msg["value"]})
 
      #######################
      ####  YES_PAXOSED  ####
@@ -853,9 +873,11 @@ class Node(object):
         group1, group2 = self.handle_split()
 
         learn_msg1 = ({"parent": msg["parent"], "destination": group1.members, "source" : self.name, 
-                       "type": "LEARN", "key": "GROUPS", "value": (self.lgroup, group1 , group2), "store" : {}})
+                       "type": "LEARN", "key": "GROUPS","p_num":self.group.p_num,
+                        "value": (self.lgroup, group1 , group2), "store" : {}})
         learn_msg2 = ({"parent": msg["parent"], "destination": group2.members, "source" : self.name, 
-                       "type": "LEARN", "key": "GROUPS", "value": (group1, group2 , self.rgroup), "store" : dict()})
+                       "type": "LEARN", "key": "GROUPS","p_num":self.group.p_num,
+                        "value": (group1, group2 , self.rgroup), "store" : dict()})
 
         neighborL_msg = ({"parent": msg["parent"] , "destination": [self.lgroup.leader], "source": self.name,
                           "type": "COMMIT", "key": "SPLIT","which": "yourRight", "value": (group1)})
@@ -876,7 +898,8 @@ class Node(object):
         newGroup = Group(self.group.key_range, self.group.leader, (self.group.members + [msg["who"]]), self.group.p_num)
 
         learn_msg = ({"parent": msg["parent"], "destination": newGroup.members, "source" : self.name, 
-                      "type": "LEARN", "key": "ADD_SELF", "value": (self.lgroup,newGroup,self.rgroup), "store" : self.store})
+                      "type": "LEARN", "key": "ADD_SELF","p_num":self.group.p_num,
+                       "value": (self.lgroup,newGroup,self.rgroup), "store" : self.store})
         
         neighborL_msg = ({"parent": msg["parent"] , "destination": [self.lgroup.leader], "source": self.name,
                           "type": "COMMIT", "key": "ADD_OTHER","which": "yourRight", "value": msg["who"] })
@@ -894,7 +917,7 @@ class Node(object):
         ################
       elif msg["key"] == "DROP":
         learn_msg = ({"parent": msg["parent"], "destination": self.group.members, "source" : self.name, 
-                      "type": "LEARN", "key": "DROP_SELF", "value": msg["who"]})
+                      "type": "LEARN", "key": "DROP_SELF", "value": msg["who"],"p_num":self.group.p_num})
 
         neighborL_msg = ({"parent": msg["parent"] , "destination": [self.lgroup.leader], "source": self.name,
                           "type": "COMMIT", "key": "DROP_OTHER","which": "yourRight", "value": msg["who"]})
@@ -955,17 +978,19 @@ class Node(object):
                           "type": "COMMIT_ACK", "req": ("commit", msg["key"], msg["value"], neighborR_msg["destination"] )})
 
       self.req.send_json({"parent":  msg["parent"] ,"destination": [self.group], "source": self.name, 
-                          "type": "LEARN", "key": "UNBLOCK"})
+                          "type": "LEARN", "key": "UNBLOCK","p_num":self.group.p_num})
 
                      ################
                      #### SPLIT #####
                      ################
       if msg["key"] == "SPLIT":
         if msg["which"] == "yourRight":
-          learn_msg1 = ({"parent": msg["parent"] ,"destination": self.group.members, "source": self.name, "type": "LEARN", 
+          learn_msg1 = ({"parent": msg["parent"] ,"destination": self.group.members,
+                         "source": self.name, "type": "LEARN", "p_num":self.group.p_num,
                          "key": "GROUPS", "value": (self.lgroup, self.group, msg["value"]), "store": dict()})
         elif msg["which"] == "yourLeft":
-          learn_msg1 = ({"parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, "type": "LEARN", 
+          learn_msg1 = ({"parent" : msg["parent"] ,"destination": self.group.members,
+                         "source" : self.name, "type": "LEARN","p_num":self.group.p_num,
                          "key": "GROUPS", "value": (msg["value"], self.group , self.rgroup), "store" : dict()})
         else:
           print "SPLIT COMMIT ILLFORMED - which is messed"
@@ -979,10 +1004,12 @@ class Node(object):
                      ###################
         if msg["value"] == "MERGE_ID":
           if msg["which"] == "leftMerge":
-            learn_msg = ({ "destination": self.group.members, "source" : self.name, "type": "LEARN", 
+            learn_msg = ({ "destination": self.group.members, "source" : self.name,
+                           "type": "LEARN","p_num":self.group.p_num,
                            "key": "GROUPS", "value": (msg["value"],self.group,self.rgroup), "store": dict()})
           elif msg["which"] == "rightMerge":
-            learn_msg = ({ "parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, "type": "LEARN", 
+            learn_msg = ({ "parent" : msg["parent"] ,"destination": self.group.members,
+                           "source" : self.name, "type": "LEARN","p_num":self.group.p_num,
                            "key": "GROUPS", "value": (self.lgroup, self.group, msg["value"]), "store": dict()})
           else:
             print "Commit illformed w/o which field"
@@ -991,7 +1018,8 @@ class Node(object):
                      #### MERGE_REQ #####
                      ####################
         elif msg["value"] == "MERGE_REQ":
-          learn_msg = ({"parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, "type": "LEARN", 
+          learn_msg = ({"parent" : msg["parent"] ,"destination": self.group.members,
+                         "source" : self.name, "type": "LEARN", "p_num":self.group.p_num,
                         "key": "GROUPS", "value": (msg["value"]), "store" : msg["store"]})
           self.req.send_json(learn_msg)       
                      ####################
@@ -999,11 +1027,13 @@ class Node(object):
                      ####################
         elif msg["value"] == "MERGE_FWD":
           if msg["which"] == "rightMerge":
-            learn_msg = ({"parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, "type": "LEARN", 
+            learn_msg = ({"parent" : msg["parent"] ,"destination": self.group.members,
+                         "source" : self.name, "type": "LEARN", "p_num":self.group.p_num,
                           "key": "GROUPS", "value": (msg["value"],self.group,self.rgroup), "store": dict()})
           elif msg["which"] == "leftMerge":
             learn_msg = {"parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, 
-                            "type": "LEARN", "key": "GROUPS", "value": (self.lgroup, self.group, msg["value"]), "store": dict()}
+                            "type": "LEARN", "key": "GROUPS","p_num":self.group.p_num,
+                             "value": (self.lgroup, self.group, msg["value"]), "store": dict()}
           else:
             print "Commit illformed w/o which field"
             self.req.send_json(learn_msg)
@@ -1013,16 +1043,19 @@ class Node(object):
         elif msg["key"] == "ADD_OTHER" or msg["key"] == "DROP_OTHER":
 
           learn_msg = ({  "parent" : msg["parent"] ,"destination": self.group.members, "source" : self.name, 
-                          "type": "LEARN", "key": msg["key"], "value": (msg["value"]), "which" : msg["which"] })
+                          "type": "LEARN", "key": msg["key"],"p_num":self.group.p_num,
+                           "value": (msg["value"]), "which" : msg["which"] })
           self.req.send_json(learn_msg)
 
         elif msg["key"] == "ELECTION":
           if msg["source"] in self.rgroup.members:
             learn_msg = {"parent": msg["parent"], "destination": self.group.members, "source": self.name,
-                         "type": "LEARN", "key": msg["key"], "value": msg["value"], "which": "right"}
+                         "type": "LEARN", "key": msg["key"],"p_num":self.group.p_num,
+                          "value": msg["value"], "which": "right"}
           elif msg["source"] in self.lgroup.members:
             learn_msg = {"parent": msg["parent"], "destination": self.group.members, "source": self.name,
-                         "type": "LEARN", "key": msg["key"], "value": msg["value"], "which": "right"}
+                         "type": "LEARN", "key": msg["key"],"p_num":self.group.p_num,
+                          "value": msg["value"], "which": "right"}
           else:
             learn_msg = None
           self.req.send_json(learn_msg)
@@ -1048,6 +1081,8 @@ class Node(object):
         self.sub_sock.close()
         self.req_sock.close()
         sys.exit(0)
+
+
 
 def make_paxos_msg(typ, dst, src, key, value, p_num, prior_proposal, parent, who):
   return {"type": typ, "destination": dst, "source": src, "key": key, "value": value, 
