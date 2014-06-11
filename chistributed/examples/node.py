@@ -308,6 +308,11 @@ class Node(object):
     if typ == 'get' or typ == 'getRelay':
       print "MESSAGE: GET", msg["key"]
 
+      if typ == "get":
+        parent = (self.name,msg["id"])
+      else:
+        parent = msg["parent"]
+
       k = msg['key']
 
       self.pending_reqs.append(("get", k))
@@ -323,10 +328,11 @@ class Node(object):
         except KeyError:
           print "Oops! That is not a key for which we have a value. Try again..."
       else:
-        self.req.send_json({'type' : 'getRelay', 'destination': [dest],'id' : msg['id'], 'key': msg['key']})
-        
+        self.req.send_json({'type' : 'getRelay', 'parent' : parent, 'destination': [dest],
+                           'id' : msg['id'], 'key': msg['key']})
       if typ == "getRelay":
-        self.req.send_json({"destination": [msg["source"]], "source": self.name, "type": "GET_ACK", "req": ("get", k)})
+        self.req.send_json({"destination": [msg["source"]], "source": self.name, "parent" : parent,
+                           "type": "GET_ACK", "req": ("get", k)})
 
     elif typ == "get_ack":
       if msg["req"] in self.pending_reqs:
@@ -335,28 +341,39 @@ class Node(object):
     #############
     #### SET ####
     #############
+    elif typ == "fwd_setResponse":
+      print "IN SETRESPONSE_FWD"
+      self.req.send_json({'type': 'setResponse', 'id': msg['id'], 'value': msg["value"]}) 
+      print "SENT setResponse TO BROKER"
+
     elif typ == 'set' or typ == 'setRelay':
       print "MESSAGE: SET",msg["key"],"to",msg["value"]
       k = msg['key']
       v = msg['value']
+
+      if typ == "set":
+        parent = (self.name,msg["id"])
+      else:
+        parent = msg["parent"]
+
 
       self.pending_reqs.append(("set", k, v))
       dest = self.forwardTo(k)
       if dest == self.group.leader or dest == self.name:
 
         self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, "who": self.name, 
-                            'value': v, 'prior': None, "p_num": self.group.p_num, "parent":self.name})
+                            'value': v, 'prior': None, "p_num": self.group.p_num, "parent":parent})
         print "SENT",{'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, "who": self.name,
-                            'value': v, 'prior': None, "p_num": self.group.p_num, "parent":self.name}
+                            'value': v, 'prior': None, "p_num": self.group.p_num, "parent":parent}
         self.req.send_json({'type': 'log', 'debug': {'event': 'setting', 'node': self.name, 'key': k, 'value': v}})
         #self.req.send_json({'type': 'setResponse', 'id': msg['id'], 'value': v}) 
         print "SENT",{'type': 'setResponse', 'id': msg['id'], 'value': v}
       else:
         self.req.send_json({'type' : 'setRelay', 'destination': [dest],'id' : msg['id'], 
-                            'key': msg['key'], 'value' : msg['value']})
+                            'key': msg['key'], 'value' : msg['value'], "parent":parent})
       if typ == "setRelay":
         self.req.send_json({"type": "SET_ACK", "destination": [msg["source"]], 
-                            "source": self.name, "req": ("set", k, v)})
+                            "source": self.name, "req": ("set", k, v), "parent":parent})
 
     elif typ == "set_ack":
       if msg["req"] in self.pending_reqs:
@@ -458,8 +475,10 @@ class Node(object):
                                              None, msg["parent"], msg["who"])
                     self.req.send_json(new_msg)
                     print "SENT LEARN", new_msg
-                  self.req.send_json({'type': 'setResponse', 'id': self.group.p_num, 'value': msg["value"]}) 
-                    
+                  print "pre send IMPORTANT"
+                  self.req.send_json({'type': 'fwd_setResponse', 'destination' : [msg["parent"][0]],
+                                 "id":msg["parent"][1], 'value': msg["value"], "source":self.name})  
+                  print "post send IMPORTANT"
       elif typ == "REDIRECT":
           if key not in self.redirects:
             self.redirects[key] = []
@@ -557,8 +576,10 @@ class Node(object):
             self.group.members.remove(msg["value"])
 
           else:
-            print "STORE KEY : VALUE",key,value
+
+            print "STORE KEY : VALUE",key,msg["value"]
             self.store[long(key)] = msg["value"]
+            print "death?"
       else:
           print "This is not the type of message an acceptor should be receiving"
 
