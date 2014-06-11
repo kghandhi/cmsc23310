@@ -1,0 +1,22 @@
+start n1 --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start a --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start b --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start c --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start d --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start e --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start f --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start g --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start h --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start i --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start j --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start k --peer-names n1,a,b,c,d,e,f,g,h,i,j,k --key-range 0,16 --pred-group n,o --key-range1 32,48 --succ-group l,m --key-range2 16,32
+start l --peer-names l,m --key-range 16,32 --pred-group n1,a,b,c,d,e,f,g,h,i,j,k --key-range1 0,16 --succ-group n,o --key-range2 32,48
+start m --peer-names l,m --key-range 16,32 --pred-group n1,a,b,c,d,e,f,g,h,i,j,k --key-range1 0,16 --succ-group n,o --key-range2 32,48
+start n --peer-names n,o --key-range 32,48 --pred-group l,m --key-range1 16,32 --succ-group n1,a,b,c,d,e,f,g,h,i,j,k --key-range2 0,16 
+start o --peer-names n,o --key-range 32,48 --pred-group l,m --key-range1 16,32 --succ-group n1,a,b,c,d,e,f,g,h,i,j,k --key-range2 0,16
+set k 47 1
+set l 46 10
+set m 40 100000
+get k 40
+get m 47
+get a 46
