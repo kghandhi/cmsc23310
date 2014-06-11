@@ -1,0 +1,13 @@
+start a --peer-names a,b --key-range 0,16 --pred-group c,d --key-range1 40,48 --succ-group e,f --key-range2 16,32
+start b --peer-names a,b --key-range 0,16 --pred-group c,d --key-range1 40,48 --succ-group e,f --key-range2 16,32
+start e --peer-names e,f --key-range 16,32 --pred-group a,b --key-range1 0,16 --succ-group g,h --key-range2 32,35
+start f --peer-names e,f --key-range 16,32 --pred-group a,b --key-range1 0,16 --succ-group g,h --key-range2 32,35
+start g --peer-names g,h --key-range 32,35 --pred-group e,f --key-range1 16,32 --succ-group i,j --key-range2 35,40
+start h --peer-names g,h --key-range 32,35 --pred-group e,f --key-range1 16,32 --succ-group i,j --key-range2 35,40
+start i --peer-names i,j --key-range 35,40 --pred-group e,f --key-range1 32,35 --succ-group c,d --key-range2 35,40
+start j --peer-names i,j --key-range 35,40 --pred-group e,f --key-range1 32,35 --succ-group c,d --key-range2 35,40
+start c --peer-names c,d --key-range 40,48 --pred-group i,j --key-range1 35,40 --succ-group a,b --key-range2 0,16
+start d --peer-names c,d --key-range 40,48 --pred-group i,j --key-range1 35,40 --succ-group a,b --key-range2 0,16
+set e 16 42
+drop 4  
+get c 16

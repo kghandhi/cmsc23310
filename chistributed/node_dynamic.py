@@ -1017,13 +1017,13 @@ if __name__ == '__main__':
                       type=str, default='')
 
   parser.add_argument('--pred-group', dest='pred_group', 
-                      type=str, default=None)
+                      type=str, default='')
   parser.add_argument('--key-range1', dest='key_range1',
-                      type=str, default=None)
+                      type=str, default='')
   parser.add_argument('--succ-group', dest="succ_group",
-                      type=str, default=None)
+                      type=str, default='')
   parser.add_argument('--key-range2', dest='key_range2',
-                      type=str, default=None)
+                      type=str, default='')
   args = parser.parse_args()
   args.peer_names = args.peer_names.split(',')
   args.key_range = args.key_range.split(',')
