@@ -1,0 +1,30 @@
+start a --peer-names a,b,c,d --key-range 0,16 --pred-group z,x,y --key-range1 45,48 --succ-group e,f,g,h --key-range2 16,20
+start b --peer-names a,b,c,d --key-range 0,16 --pred-group z,x,y --key-range1 45,48 --succ-group e,f,g,h --key-range2 16,20
+start c --peer-names a,b,c,d --key-range 0,16 --pred-group z,x,y --key-range1 45,48 --succ-group e,f,g,h --key-range2 16,20
+start d --peer-names a,b,c,d --key-range 0,16 --pred-group z,x,y --key-range1 45,48 --succ-group e,f,g,h --key-range2 16,20
+start e --peer-names e,f,g,h --key-range 16,20 --pred-group a,b,c,d --key-range1 0,16 --succ-group i,j,k --key-range2 20,23
+start f --peer-names e,f,g,h --key-range 16,20 --pred-group a,b,c,d --key-range1 0,16 --succ-group i,j,k --key-range2 20,23
+start g --peer-names e,f,g,h --key-range 16,20 --pred-group a,b,c,d --key-range1 0,16 --succ-group i,j,k --key-range2 20,23
+start h --peer-names e,f,g,h --key-range 16,20 --pred-group a,b,c,d --key-range1 0,16 --succ-group i,j,k --key-range2 20,23
+start i --peer-names i,j,k --key-range 20,23 --pred-group e,f,g,h --key-range1 16,20 --succ-group l,m,n,o --key-range2 23,31
+start j --peer-names i,j,k --key-range 20,23 --pred-group e,f,g,h --key-range1 16,20 --succ-group l,m,n,o --key-range2 23,31
+start k --peer-names i,j,k --key-range 20,23 --pred-group e,f,g,h --key-range1 16,20 --succ-group l,m,n,o --key-range2 23,31
+start l --peer-names l,m,n,o --key-range 23,31 --pred-group i,j,k --key-range1 20,23 --succ-group p,q,r,s --key-range2 31,38
+start m --peer-names l,m,n,o --key-range 23,31 --pred-group i,j,k --key-range1 20,23 --succ-group p,q,r,s --key-range2 31,38
+start n --peer-names l,m,n,o --key-range 23,31 --pred-group i,j,k --key-range1 20,23 --succ-group p,q,r,s --key-range2 31,38
+start o --peer-names l,m,n,o --key-range 23,31 --pred-group i,j,k --key-range1 20,23 --succ-group p,q,r,s --key-range2 31,38
+start p --peer-names p,q,r,s --key-range 31,38 --pred-group l,m,n,o --key-range1 23,31 --succ-group t,u,v,w --key-range2 38,45
+start q --peer-names p,q,r,s --key-range 31,38 --pred-group l,m,n,o --key-range1 23,31 --succ-group t,u,v,w --key-range2 38,45
+start r --peer-names p,q,r,s --key-range 31,38 --pred-group l,m,n,o --key-range1 23,31 --succ-group t,u,v,w --key-range2 38,45
+start s --peer-names p,q,r,s --key-range 31,38 --pred-group l,m,n,o --key-range1 23,31 --succ-group t,u,v,w --key-range2 38,45
+start t --peer-names t,u,v,w --key-range 38,45 --pred-group p,q,r,s --key-range1 31,38 --succ-group z,x,y --key-range2 45,48
+start u --peer-names t,u,v,w --key-range 38,45 --pred-group p,q,r,s --key-range1 31,38 --succ-group z,x,y --key-range2 45,48
+start v --peer-names t,u,v,w --key-range 38,45 --pred-group p,q,r,s --key-range1 31,38 --succ-group z,x,y --key-range2 45,48
+start w --peer-names t,u,v,w --key-range 38,45 --pred-group p,q,r,s --key-range1 31,38 --succ-group z,x,y --key-range2 45,48
+start z --peer-names z,x,y --key-range 45,48 --pred-group t,u,v,w --key-range1 38,45 --succ-group a,b,c,d --key-range2 0,16
+start x --peer-names z,x,y --key-range 45,48 --pred-group t,u,v,w --key-range1 38,45 --succ-group a,b,c,d --key-range2 0,16
+start y --peer-names z,x,y --key-range 45,48 --pred-group t,u,v,w --key-range1 38,45 --succ-group a,b,c,d --key-range2 0,16
+set x 23 "first set"
+get o 23
+split A n,o,p,q
+get m 23
