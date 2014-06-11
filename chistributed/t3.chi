@@ -6,3 +6,5 @@ start n5 --peer-names n4,n5,n6 --key-range 16,32 --pred-group n2,n3,n1 --key-ran
 start n6 --peer-names n4,n5,n6 --key-range 16,32 --pred-group n2,n3,n1 --key-range1 0,16 --succ-group n7,n8,n0 --key-range2 32,48 
 set n5 15 42
 get n4 15
+#
+get n3 15

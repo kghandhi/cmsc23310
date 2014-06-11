@@ -72,7 +72,8 @@ class Node(object):
 
     # Liveness queues
     self.pending_reqs = []
-    self.pong = [] #every time loop we update this with group members and wait for them to respond
+    self.pong = {} #dict of { (<nodeName>:<rounds_since_ponged>)}
+
 
     self.spammer = spammer
     self.peer_names = peer_names #eventually this will be our group
@@ -151,17 +152,47 @@ class Node(object):
     #self.loop.add_callback(self.housekeeping)
 
   def housekeeping(self):
-    print "IN HOUSEKEEPING"
-    if self.pong:
-      for dead_member in self.pong:
-        proposal = {"type": "START", "destination": [self.group.leader], "source": self.name, 
-                    "key": "DROP", "value": dead_member}
-        self.req.send_json(proposal)
 
+    print "\n\nIN HOUSEKEEPING"
+
+    #######################
+    #HEARTBEATS
+    #######################
+    if self.name == self.group.leader:
+      print "PONG CHECK",self.pong
+      if not self.pong:
+        for mem in self.group.members:
+          self.pong[mem] = 0
+
+
+      for mem in self.pong:
+        if mem[1] == 4:
+            proposal = {"type": "START", "destination": [self.group.leader], "source": self.name, 
+                      "key": "DROP", "value": dead_member}
+            self.req.send_json(proposal)
+
+      print self.pong
+      for mem in self.pong.values():
+        print "\t\t",mem
+        mem += 1
+      for mem in self.pong.keys():
+        if mem != self.name:
+          ping = {"type": "PING", "destination": [mem], "source": self.name}
+          self.req.send_json(ping)
+          print "SENT PING",ping
+
+    
+    ##############################
+    #CHECK IF KICKED OUT OF GROUP
+    ##############################
     if self.name not in self.group.members:
-      self.req.send_json({"type": "START", "destination": [self.group.pleader], "source": self.name, 
+      self.req.send_json({"type": "START", "destination": [self.group.leader], "source": self.name, 
                           "key": "ADD", "value": self.name})
-
+      print "KICKED OUT OF GROUP, ASKING TO REJOIN"
+    
+    ##########################
+    #CHECK GROUPSIZE
+    ##########################
     if self.group.leader == self.name:
       # Split if you have too many members
       if (len(self.group.members) > MAX_GROUP):
@@ -171,6 +202,10 @@ class Node(object):
       if (len(self.group.members) < MIN_GROUP):
         self.req.send_json({"type": "START", "destination": [self.group.leader], "source": self.name,
                             "key": "MERGE", "value": "MERGE_ID"})
+
+    ###############################################
+    #CHECK REQ QUEUE TO MAKE SURE GET/SET REQUESTS WERENT DROPPED
+    ###############################################
     if self.pending_reqs:
       for unhandled in self.pending_reqs:
         if unhandled[0] == "get":
@@ -185,15 +220,17 @@ class Node(object):
           handle = {"type": "COMMIT", "source": self.name, "destination": [dest], "key": key, 
                     "value": value}
         self.req.send_json(handle)
-
+        print "RESENDING UNANSWERED REQ",handle
+    
+    ###########################
+    ##### CHECK LEADER STATUS
+    ###########################
     if not self.group.leader:
       proposal = {"type": "PROPOSE", "destination": [self.name], "source": self.name, 
                   "key": "ELECTION", "value": self.name, "parent": self.name, "who": None}
       self.req.send_json(proposal)
-
-    self.pong = [mem for mem in self.group.members]
-    for mem in self.pong:
-      ping = {"type": "PING", "destination": [mem], "source": self.name}
+      print "PROPOSE LEADER CHANGE"
+    
 
     self.loop.add_timeout(time.time() + TIME_LOOP, self.housekeeping)
 
@@ -254,6 +291,10 @@ class Node(object):
     print self.name , "recieved message: ", msg
     typ = msg['type']
 
+    #if typ == "PONG" or typ == "PING" or typ == "PONG123":
+    #self.req.send_json({'type': 'log', 'rando': msg})
+
+
     ######################
     #### HELLO & SPAM ####
     ######################
@@ -270,18 +311,29 @@ class Node(object):
 
     elif typ == 'spam':
       self.req.send_json({'type': 'log', 'spam': msg})
-      print ""
       return
 
     elif typ == "PING":
-      self.req.send_json({"type": "PONG", "destination": [msg["source"]], "source": self.name})
+      print "RECIEVED PING",msg
+      print msg["source"]
+
+      pong = {"type": "PONG", "destination": [msg["source"]], "source": self.name, "value":None}
+      self.req.send_json(pong)
+
+      print "SENT PONG",pong
       return
 
+    elif typ == "heartbeat":
+      print "received hearbeat"
+
     elif typ == "PONG":
+      print "RECIEVED PONG",msg
+      print self.pong,msg["source"]
       if msg["source"] in self.pong:
-        self.pong.remove(msg["source"])
+        self.pong[msg["source"]] = 0
       else:
-        raise Exception("Go away spammer!")
+        print "received pong, not in"
+      print "\tSURVIVED PONG",self.pong
       return
 
     if typ in ["SET_ACK", "GET_ACK", "COMMIT_ACK"]:
@@ -329,19 +381,19 @@ class Node(object):
         parent = msg["parent"]
 
       self.pending_reqs.append(("get", k))
-      print "ENTERING FORWARD TO"
+
       dest = self.forwardTo(k)
-      print "DESTINATION IS",dest
+
       if dest == self.group.leader or dest == self.name:
-        print self.store,k
+
         try:
           v = self.store[long(k)]
-          self.req.send_json({'type': 'log', 'debug': {'event': 'getting', 'node': self.name, 'key': k, 'value': v}})
           if typ == "get":
             self.req.send_json({'type': 'getResponse', 'id': msg['id'], 'value': v})
           else:
             self.req.send_json({'type': 'fwd_getResponse', "destination":[msg["parent"][0]], 'id': msg["parent"][1], 'value': v})
           print "sent msg", {'type': 'getResponse', 'id': msg['id'], 'value': v}
+
         except KeyError:
           print "Oops! That is not a key for which we have a value. Try again..."
       else:
@@ -350,8 +402,10 @@ class Node(object):
         print "sent getRelay",({'type' : 'getRelay', 'parent' : parent, 'destination': [dest],
                            'id' : msg['id'], 'key': msg['key']})
       if typ == "getRelay":
-        self.req.send_json({"destination": [msg["source"]], "source": self.name, "parent" : parent,
-                           "type": "GET_ACK", "req": ("get", k)})
+        get_ack = ({"destination": [msg["source"]], "source": self.name, "parent" : parent,
+                           "type": "get_ack", "req": ("get", k)})
+        self.req.send_json(get_ack)
+        print "sent get_ack",get_ack 
 
     elif typ == "get_ack":
       if msg["req"] in self.pending_reqs:
@@ -363,7 +417,7 @@ class Node(object):
     elif typ == "fwd_setResponse":
       print "IN SETRESPONSE_FWD"
       self.req.send_json({'type': 'setResponse', 'id': msg['id'], 'value': msg["value"]}) 
-      print "SENT setResponse TO BROKER"
+      print "SENT setResponse TO BROKER\n"
 
     elif typ == 'set' or typ == 'setRelay':
       print "MESSAGE: SET",msg["key"],"to",msg["value"]
@@ -378,33 +432,32 @@ class Node(object):
 
       self.pending_reqs.append(("set", k, v))
       dest = self.forwardTo(k)
-      print "survived forwardTo",dest
+
       if dest == self.group.leader or dest == self.name:
-
-        self.req.send_json({'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, "who": self.name, 
+        propose_paxos = ({'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, "who": self.name, 
                             'value': v, 'prior': None, "p_num": self.group.p_num, "parent":parent})
-        print "SENT",{'type': 'PROPOSE', 'destination': [self.group.leader], 'key': k, "who": self.name,
-                            'value': v, 'prior': None, "p_num": self.group.p_num, "parent":parent}
-        self.req.send_json({'type': 'log', 'debug': {'event': 'setting', 'node': self.name, 'key': k, 'value': v}})
-        #self.req.send_json({'type': 'setResponse', 'id': msg['id'], 'value': v}) 
-        print "SENT",{'type': 'setResponse', 'id': msg['id'], 'value': v}
-      else:
-        self.req.send_json({'type' : 'setRelay', 'destination': [dest],'id' : msg['id'], 
-                            'key': msg['key'], 'value' : msg['value'], "parent":parent, "source":self.name})
-        print "SENT SETRELAY",({'type' : 'setRelay', 'destination': [dest],'id' : msg['id'], 
-                            'key': msg['key'], 'value' : msg['value'], "parent":parent})
-      if typ == "setRelay":
-        print "AM I ALIVE?",
-        self.req.send_json({"type": "SET_ACK", "destination": [msg["source"]], 
-                            "source": self.name, "req": ("set", k, v), "parent":parent})
-        print "STILL??"
+        self.req.send_json(propose_paxos)
 
+        self.pending_reqs.remove(("set", k, v))
+        print "SENT",propose_paxos
+      else:
+        setRelay_msg = ({'type' : 'setRelay', 'destination': [dest],'id' : msg['id'], 
+                            'key': msg['key'], 'value' : msg['value'], "parent":parent, "source":self.name})
+        self.req.send_json(setRelay_msg)
+        print "SENT SETRELAY",setRelay_msg
+
+      if typ == "setRelay":
+        self.req.send_json({"type": "set_ack", "destination": [msg["source"]], 
+                            "source": self.name, "req": ("set", k, v), "parent":parent})
+      print "END OF SET/SETRELAY"
+      return
     elif typ == "set_ack":
+      print "RECIEVED SET_ACK",msg
       if msg["req"] in self.pending_reqs:
         self.pending_reqs.remove(msg["req"])
         
     else:
-      self.req.send_json({'type': 'log', 'debug': {'event': 'unknown', 'node': self.name}})
+      self.req.send_json({'type': 'log', 'debug': {'value':msg}})
 
   #################################
   #######    HANDLE         #######
@@ -412,13 +465,14 @@ class Node(object):
   #################################
 
   def handle_paxos(self, msg):
-    print "RECIEVED PAXOS MESSAGE",msg
+    print "\n"
+    print "RECEIVED PAXOS MESSAGE",msg["type"]
     majority = math.ceil(len(self.group.members) / 2)
     typ = msg["type"]
     key = msg["key"]
     n = msg["p_num"]
     self.accs = [m for m in self.group.members]
-    if (self.group.leader == self.name or key == "LEADER") and typ != "LEARN":
+    if (self.group.leader == self.name or key == "LEADER") and typ not in ["LEARN","PREPARE","ACCEPT"]:
       if typ == "PROPOSE":       
           if self.group.p_num not in self.proposals:
             self.proposals[self.group.p_num] = msg["value"]
@@ -511,29 +565,32 @@ class Node(object):
               new_msg = make_paxos_msg("PROPOSE", [msg["source"]], self.name, key, msg["value"], 
                                        n, None, msg["parent"], msg["who"])
       else:
-          print "This is not the typ eof message a proposer should be recieving"
+          print "This is not the type of message a proposer should be recieving"
+          self.req.send_json({'type': 'log', 'spam': msg})
+
     else:
       if typ == "PREPARE":
-        print "IN PREPARE HERE",key,self.n_int
+        print "IN PREPARE HERE",key,self.n_int,n
         self.group.p_num += 1
         if key not in self.n_int:
 
           self.n_int[key] = -1 #initialize
-
-          if n >= self.n_int[key]:
+        if n >= self.n_int[key]:
             if key in self.acced: # proposals that have been accepted for that key
+              print "here",self.acced
               high_p = sorted(self.acced[key], key=lambda x: x[1])[-1]
               self.n_int[key] = high_p[1] #send the latest (greatest) n
+              print "here again",high_p,self.n_int
             else:
               print "in else case"
               high_p = None
               self.n_int[key] = n
-              print "About to make new msg",msg["parent"], msg["who"]
+            print "About to make new msg",msg["parent"], msg["who"]
               
-              new_msg = make_paxos_msg("PROMISE", [msg["source"]], self.name, msg["key"],msg["value"], 
-                                       n, high_p, msg["parent"], msg["who"])
-              self.req.send_json(new_msg)
-              print "SENT PREPARE",new_msg
+            new_msg = make_paxos_msg("PROMISE", [msg["source"]], self.name, msg["key"],msg["value"], 
+                                     n, high_p, msg["parent"], msg["who"])
+            self.req.send_json(new_msg)
+            print "SENT PREPARE",new_msg
       elif typ == "ACCEPT":
           if self.n_int[key] <= n:
             new_msg = make_paxos_msg("ACCEPTED", [msg["source"]], self.name,msg["key"], msg["value"], 
@@ -600,10 +657,7 @@ class Node(object):
             self.group.members.remove(msg["value"])
 
           else:
-
-            print "STORE KEY : VALUE",key,msg["value"]
             self.store[long(key)] = msg["value"]
-            print "death?"
       else:
           print "This is not the type of message an acceptor should be receiving"
 
