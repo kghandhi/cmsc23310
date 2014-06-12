@@ -17,21 +17,7 @@
 \xyoption{rotate}
 \usepackage[procnames]{listings}
 \usepackage{color}
-
-\definecolor{keywords}{RGB}{255,0,90}
-\definecolor{comments}{RGB}{0,0,113}
-\definecolor{red}{RGB}{160,0,0}
-\definecolor{green}{RGB}{0,150,0}
- 
-\lstset{language=Python, 
-        basicstyle=\ttfamily\small, 
-        keywordstyle=\color{keywords},
-        commentstyle=\color{comments},
-        stringstyle=\color{red},
-        showstringspaces=false,
-        identifierstyle=\color{green},
-        procnamekeys={def,class}}
- 
+\usepackage{listings}
 
 
 %----------Commands----------
@@ -145,6 +131,22 @@
 \bibliographystyle{plain}
 \begin{document}
 
+\definecolor{keywords}{RGB}{255,0,90}
+\definecolor{comments}{RGB}{0,0,113}
+\definecolor{red}{RGB}{160,0,0}
+\definecolor{green}{RGB}{0,150,0}
+
+\lstset{language=Python, 
+        basicstyle=\ttfamily\small, 
+        keywordstyle=\color{keywords},
+        commentstyle=\color{comments},
+        stringstyle=\color{red},
+        showstringspaces=false,
+        identifierstyle=\color{green},
+        procnamekeys={def,class}}
+ 
+
+
 \title{Consistent, Available Key Value Data Store}
 \author{Andrew Muller and Kira Ghandhi \\
 Advanced Distributed Systems}
@@ -157,19 +159,19 @@ Advanced Distributed Systems}
 This project is an implementation of a distributed key value data store built on a simple distributed hash table (DHT) running with Paxos \cite{Paxos} for consistency. The implementation is based on the highly distributed peer-to-peer system, Scatter \cite{Scatter}. Unlike many other DHTs such as Chord \cite{Chord} and Pastry \cite{Pastry} that aim for high availability, Scatter seeks the best of both availability and consistency in addition to being highly scalable and dealing with high \textit{churn} (frequent adds and drops of nodes). As originally proven in the paper \cite{Scatter}, Scatter performs better in terms of availability, performance, and consistency than a plain DHT, like OpenDHT. This project deals mainly with optimizing on key range consistency and routing consistency with an interpretation of Scatter.
 
 \section{Scatter Overview}
-Scatter is a fully decentralized peer-to-peer system that aims for consistency and scalability while maintaining the high availability attributed to DHTs. It provides "linearlizable consistency semantics for operations on a single key/value pair despite (1) lossy and variable-latency network connections, (2) dynamic system membership including uncontrolled departures, and (3) transient, asymmetric communication faults" \cite{Scatter}. In addition it can support  millions of nodes and is highly adaptable, a feature this project employs. 
+Scatter is a fully decentralized peer-to-peer system that aims for consistency and scalability while maintaining the high availability attributed to DHTs. It provides``linearlizable consistency semantics for operations on a single key/value pair despite (1) lossy and variable-latency network connections, (2) dynamic system membership including uncontrolled departures, and (3) transient, asymmetric communication faults" \cite{Scatter}. In addition it can support  millions of nodes and is highly adaptable, a feature this project employs. 
 \subsection{Architecture}
-To do this Scatter partitions the DHT into \textit{groups} of nodes who are responsible for a specific key range, $[a,b)$. Within each group the nodes are responsible for a smaller subsection of the group's larger key range. For that key range each node is called the \textit{primary}. Each group elects a leader to perform operations between groups while reads from specific keys in the groups are delegated to the primary for that key.
+To achieve its goal, Scatter partitions the DHT into \textit{groups} of nodes who are responsible for a specific key range, $[a,b)$. Within each group the nodes are responsible for a smaller subsection of the group's larger key range. The node is called the \textit{primary} for that key range. While each group elects a leader to perform operations between groups, reads from specific keys in the groups are delegated to the primary for that key.
 
 Each node has knowledge of the members of its group as well as the keys and values for all the keys in its group's key range, this provides replication. Each key and value in a group's key range is replicated among all the members of the group to which the key falls. While only the primary is responsible for carrying out $\mathtt{get}$ and $\mathtt{set}$ operations on a specific key, it transfers that power over according to failures, group changes etc.  Additionally each node knows its group's key range, its group's left neighbor, its group's right neighbor and its own leader. This way each group cannot communicate with the rest of the network, only its neighbors.
 
 \subsection{Nested Consensus}
 Scatter supports opperations between groups, \textit{multi-group operations}:
 \begin{itemize}
-\item \textit{Split \ \ } partitioning the coordinating group into two groups
-\item \textit{Merge\ \ } creating a new group from the union of two groups
-\item \textit{Migrate\ \ } moving members of one group to a different group
-\item \textit{Repartition \ }changing the key-space partitioning between two adjacent groups
+\item \textit{Split: \ \ } partitioning the coordinating group into two groups
+\item \textit{Merge: \ \ } creating a new group from the union of two groups
+\item \textit{Migrate: \ \ } moving members of one group to a different group
+\item \textit{Repartition: \ }changing the key-space partitioning between two adjacent groups
 \end{itemize}
 To accomplish these operations as well as $\mathtt{get}$ and $\mathtt{set}$ operations Scatter uses what it calls \textit{nested consensus}. Nested consensus is consensus between the groups as well as within the groups. For the outer consensus, consensus between groups, Scatter implements a two phase commit protocol (2PC). In its adaptation of 2PC, the group who wants to perform the multi-group operation, called the \textit{coordinator} must inform both its neighbors of the change in order for the group and its neighbors to remain consistent. At each step of 2PC the group must reach internal consensus using Paxos. Before sending the next 2PC message, or the initial $\mathtt{READY}$ message, the group must reach internal consensus about the operation. By the end of 2PC the coordinator changes its internal state and sends a $\mathtt{COMMIT}$ message to its neighbors, and any other participants who will need to update internally, who update their own internal states. 
 
@@ -189,7 +191,7 @@ Further the group operations implemented only include:
 \item $\mathtt{ELECTION}$: Electing a leader to a group
 \end{itemize}
 
-The key-space is redistributed only in \textbf{MERGE} and \textbf{SPLIT}. This implementation uses heartbeats, in the form of \textbf{PING} and \textbf{PONG} messages, to determine which nodes in a group are no longer active. These nodes are failed using \textbf{DROP} until a message is received from them when they are revived with \textbf{ADD}. Leader elections happen at a set interval to keep the leaders changing, and this is a group operation \textbf{ELECTION} because groups know the leaders of their neighbors.
+The key-space is redistributed only in $\mathtt{MERGE}$ and $\mathtt{SPLIT}$. This implementation uses heartbeats, in the form of $\mathtt{PING}$ and $\mathtt{PONG}$ messages, to determine which nodes in a group are no longer active. These nodes are failed using $\mathtt{DROP}$ until a message is received from them when they are revived with $\mathtt{ADD}$. Leader elections happen at a set interval to keep the leaders changing, and this is a group operation $\mathtt{ELECTION}$ because groups know the leaders of their neighbors.
 
 Each node knows its group which includes, primarily, a leader, a list of members, and the key range the group occupies. Each node also knows this information about the group to its left in the key range and the group to its right. This allows a node to forward messages to its neighboring group by simply forwarding the message to the leader of the group based on the key range or members in the group. 
 
@@ -197,46 +199,60 @@ In terms of nested consistency, this implementation uses almost a $3$ phase-comm
 
 The other variations are the result of interpretations of Scatter that may be different from the actual Scatter, however these variations were unavoidable based on the room for interpretation left open by the paper. The design choices are detailed in the following section.
 \section{Implementation}
-The progress in this implementation is made at the receipt of messages, so the majority of the implementation can be described by the types and reactions to message receiving. However, in order to decide when group operations such must happen it also recursively checks the status of the group, in what is called housekeeping. The status includes the liveness of members with $\mathtt{PING}$ and $\mathtt{PONG}$ messages, the need for redistribution with the size of the group, and leader elections. The majority of the work is in nested consensus required for these group operations. However, based on the specification of the project and the manner of testing, some simplifications were made that can be easily dropped. 
+Progress of a node in this implementation is made at the receipt of messages, so the majority of the implementation can be described by the types and reactions to message receiving. However, in order to decide when group operations must happen we also recursively checks the status of the group, in what is called housekeeping. The status includes the liveness of members with $\mathtt{PING}$ and $\mathtt{PONG}$ messages, the need for redistribution with the size of the group, and leader elections. The majority of the work is in nested consensus required for these group operations. However, based on the specification of the project and the manner of testing, some simplifications were made that can be easily dropped. 
 \subsection{Simplifications}
 First, this project oversimplifies the hashing of keys. The project fixes $\mathtt{MAX\_KEY}$ as $48$ and $\mathtt{MIN\_KEY}$ as $0$ for the ease of testing, but this simplification is intended to be dropped and can easily be changed when a real hashing function such as $\mathtt{SHA-1}$ is used at each read and write occurrence. This would distribute the keys evenly. For the ease of testing again, the parser expects the specification of a group into which a node is placed (- -$\mathtt{peer}$-$\mathtt{names}$), its key range (- -$\mathtt{key}$-$\mathtt{range}$), its left group (- -$\mathtt{pred}$-$\mathtt{group}$) with a  its key range (- -$\mathtt{key}$-$\mathtt{range1}$), and its right group (- -$\mathtt{succ}$-$\mathtt{group}$) with its key range (- -$\mathtt{key}$-$\mathtt{range2}$). Each key range expected to touch, for example if a group is defined to have key range $0-16$ its left group must have a key range ending in the $\mathtt{MAX\_KEY}$ value and its right group must have a key range starting with $16$. Further each key range is expected to be within $[\mathtt{MIN\_KEY}, \mathtt{MAX\_KEY}]$. 
 
 These are all design choices only for the purposes of ease of testing and could easily be relaxed. Ideally this implementation would start with a single group defined who is responsible for the entirety of the hashed key space. Nodes would be added individually to that group until it reached $\mathtt{MAX\_GROUP}$ (assuming $\mathtt{MIN\_GROUP} < \frac{\mathtt{MAX\_GROUP}}{2}$ since groups merge when they are too small), at which point it would split and the key space would also be split. This would continue to divide up the key range evenly and keep the groups to the ideal $8-12$ size outlined by Scatter.
 \subsection{Architecture}
-Technically there are two classes. A $Node$ is an object containing attributes that will make it a Proposer and an Acceptor in Paxos. It also contains a list, $pending\_reqs$, containing the pending requests it has been passed, a dictionary, $pong$, containing a tally (values) for each member of its group (key) corresponding to the number of $\mathtt{PING}$s it has not received a $\mathtt{PONG}$s from if it is the leader, and the ability to be a spammer (when it sends spam to the entire network). Finally each node has a $group$, $lgroup$ and $rgroup$ corresponding to its own group object, its left group's group object and its right group's group object.
+Technically there are two classes. A $\mathtt{Node}$ is an object containing attributes that will make it a Proposer and an Acceptor in Paxos. It also contains a list, $\mathtt{pending\_reqs}$, containing the pending requests it has been passed, a dictionary, $\mathtt{PONG}$, containing a tally (values) for each member of its group (key) corresponding to the number of $\mathtt{PING}$s it has not received a $\mathtt{PONG}$s from if it is the leader, and the ability to be a spammer (when it sends spam to the entire network). Finally each node has a $\mathtt{group}$, $\mathtt{lgroup}$ and $\mathtt{rgroup}$ corresponding to its own group object, its left group's group object and its right group's group object.
 
-A group contains a $key\_range$ which is a tuple of two keys where we take the first to be included in the range and the second to not be included. Next it contains a $leader$ name, a leaderLease (for leader elections), a list of its members, $members$, and a proposal number for paxos, $p\_num$.
+A group contains a $\mathtt{key\_range}$ which is a tuple of two keys where we take the first to be included in the range and the second to not be included. Next it contains a $\mathtt{leader}$ name, a $\mathtt{leaderLease}$ (for leader elections), a list of its members, $\mathtt{members}$, and a proposal number for Paxos, $\mathtt{p\_num}$.
 \subsection{Housekeeping}
-On the receipt of a $\mathtt{HELLO}$ message the
-\begin{lstlisting}
-self.loop.add_callback(self.housekeeping)   
-\end{lstlisting}
-callback is started. This begins the recursive call to self.housekeeping(self) that happens every $\mathtt{TIME\_LOOP}$ seconds. 
+On the receipt of a $\mathtt{HELLO}$ message the $\mathtt{self.loop.add_callback(self.housekeeping)}$ callback is started. This begins the recursive call to 
+self.housekeeping(self) that happens every $\mathtt{TIME\_LOOP}$ seconds. 
 
-In this function if a node is the leader, it checks for heartbeats of its members. In each loop a $\mathtt{PING}$ is sent to each member of the group. If the ping is responded to by a $\mathtt{PONG}$, the recipient detracts from the tally corresponding to the responder in $self.pong$. Once that tally is $0$, the name of that node is removed. If that tally ever reaches $4$, meaning a node has been $\mathtt{PING}$-ed $4$ times without response, the leader proposes to $\mathtt{DROP}$ the node from the group, assuming it has died.
+In this function if a node is the leader, it checks for heartbeats of its members. In each loop a $\mathtt{PING}$ is sent to each member of the group. If the ping is responded to by a $\mathtt{PONG}$, the recipient detracts from the tally corresponding to the responder in $\mathtt{self.pong}$. Once that tally is $0$, the name of that node is removed. If that tally ever reaches $4$, meaning a node has been $\mathtt{PING}$-ed $4$ times without response, the leader proposes to $\mathtt{DROP}$ the node from the group, assuming it has died.
 
 Each iteration a node will also check its name is still in the members of the group it believes it is part of. If its name is not in that list, it will propose to the node it believes is leader to be $\mathtt{ADD}$-ed to the group. This takes care of a dropped node coming back to life and wishing to be part of a group.
 
-Next in an iteration of $housekeeping$ if the node is the leader it checks the size of its group. If that size is larger than $\mathtt{MAX\_GROUP}$ it proposes, as the Proposer of Paxos, a $\mathtt{SPLIT}$. It also checks if the size of the group is less than $\mathtt{MIN\_GROUP}$ to propose a $\mathtt{MERGE}$. In merge we also check which of the two choices of $\mathtt{MERGE}$, left or right, would result in a more reasonable, smaller, group size before performing the $\mathtt{MERGE}$.
+Next in an iteration of $\mathtt{housekeeping}$ if the node is the leader it checks the size of its group. If that size is larger than $\mathtt{MAX\_GROUP}$ it proposes, as the Proposer of Paxos, a $\mathtt{SPLIT}$. It also checks if the size of the group is less than $\mathtt{MIN\_GROUP}$ to propose a $\mathtt{MERGE}$. In merge we also check which of the two choices of $\mathtt{MERGE}$, left or right, would result in a more reasonable, smaller, group size before performing the $\mathtt{MERGE}$.
 
-As mentioned earlier we also save pending requests for $\mathtt{get}$, $\mathtt{set}$, and $\mathtt{COMMIT}$ operations in the $self.pending_reqs$ list of each node. In housekeeping we check if that node contains any outstanding requests. Pending $\mathtt{set}$s are stored in the form $("set", <key>, <value>)$, $\mathtt{get}$s in the form $("get", <key>)$ and $\mathtt{COMMIT}$s in the form $("commit", <key>, <value>, <dest>)$. In the occurrence of any of these in the queue, they are sent along again. These are checked off, removed from the queue, once they are responded to with a $\mathtt{GET\_ACK}, \mathtt{SET\_ACK},$ or $\mathtt{COMMIT\_ACK}$.
+As mentioned earlier we also save pending requests for $\mathtt{get}$, $\mathtt{set}$, and $\mathtt{COMMIT}$ operations in the $self.pending_reqs$ list of each node. In housekeeping we check if that node contains any outstanding requests. Pending $\mathtt{set}$s are stored in the form $(``set", <key>, <value>)$, $\mathtt{get}$s in the form $(``get", <key>)$ and $\mathtt{COMMIT}$s in the form $(``commit", <key>, <value>, <dest>)$. In the occurrence of any of these in the queue, they are sent along again. These are checked off, removed from the queue, once they are responded to with a $\mathtt{GET\_ACK}, \mathtt{SET\_ACK},$ or $\mathtt{COMMIT\_ACK}$.
 
 Finally there is not a leader for a group, any node will propose an $\mathtt{ELECTION}$ as the Proposer in Paxos. Once the group learns its new leader, it will begin the 2PC to inform its neighbors of the new leader.
 \subsection{Nested Consistency}
-The adaptation of nested consistency works as follows. We take for granted that all messages are passed to the leader of the groups, so sending a message to a group refers to sending a message to the leader of a group. There are a number of types of 2PC messages: $\{ \mathtt{START}, \mathtt{START\_PAXOSED}, \mathtt{READY}, \mathtt{READY\_PAXOSED}, \mathtt{YES}, \mathtt{YES\_PAXOSED}, \mathtt{YES}, \mathtt{YES\_PAXOSED}, \mathtt{NO}, \mathtt{WAIT}, \mathtt{COMMIT} \}$. In message passing for 2PC messages, we pass these types as the $\mathtt{type}$ field of the $\mathtt{json}$. The $\mathtt{key}$ field is the type of operation from the set $\{ \mathtt{MERGE}, \mathtt{SPLIT}, \mathtt{ADD}, \mathtt{DROP}, \mathtt{ELECTION} \}$. And the $\mathtt{value}$ field varies in the set $\{ \mathtt{SPLIT}, <name>, \mathtt{MERGE\_ID}, \mathtt{MERGE\_REQ}, \mathtt{MERGE\_FWD} \}$. We will walk through the various group operations below. Each message also contains a $\mathtt{parent}$ who is the leader of the coordinating group. 
+The adaptation of nested consistency works as follows. We take for granted that all messages are passed to the leader of the groups, so sending a message to a group refers to sending a message to the leader of a group. There are a number of types of 2PC messages: \\
+$\{ \mathtt{START}, \mathtt{START\_PAXOSED}, \mathtt{READY}, \mathtt{READY\_PAXOSED}, \mathtt{YES}, \mathtt{YES\_PAXOSED}, \mathtt{YES}, \mathtt{YES\_PAXOSED}, \mathtt{NO}, \mathtt{WAIT}, \mathtt{COMMIT} \}$. In message passing for 2PC messages, we pass these types as the $\mathtt{type}$ field of the $\mathtt{json}$. The $\mathtt{key}$ field is the type of operation from the set $\{ \mathtt{MERGE}, \mathtt{SPLIT}, \mathtt{ADD}, \mathtt{DROP}, \mathtt{ELECTION} \}$. And the $\mathtt{value}$ field varies in the set $\{ \mathtt{SPLIT}, <name>, \mathtt{MERGE\_ID}, \mathtt{MERGE\_REQ}, \mathtt{MERGE\_FWD} \}$. We will walk through the various group operations below. Each message also contains a $\mathtt{parent}$ who is the leader of the coordinating group. 
 
 Notice, we make this a blocking protocol. Upon receiving at $\mathtt{START}$ 2PC message, a group will block, by sending itself a Paxos $\mathtt{LEARN}$ message, every message from a groups other than its neighbors by responding with a $\mathtt{WAIT}$. On receiving a $\mathtt{READY\_PAXOSED}$ message a group will block all messages not from the $\mathtt{parent}$ of the request, similar to how $\mathtt{PROMISE}$s work in Paxos.
 \begin{defn}
 Paxos\\
-(verb): To \textit{Paxos} is for a group to perform the Paxos consensus protocol to reach a decision about an action.\\
-(noun): An island. \\
-(noun): A protocol described by Leslie Lamport in \cite{Paxos}.
+\textit{verb}: To \textit{Paxos} is for a group to perform the Paxos consensus protocol to reach a decision about an action.\\
+\textit{noun}: An island in Greece. \\
+\textit{noun}: A protocol described by Leslie Lamport in \cite{Paxos}.
 \end{defn}
+The following table helps to describe how we manage to pass between Paxos and 2PC. 
+\begin{center}
+\begin{tabular}{| p{2.5cm} | l | l | l |}
+\hline
+Type & Key & Value & Parent \\ \hline
+$ \mathtt{START}$ & $ \mathtt{ADD}$ & $<name>$ & \\ \hline
+$ \mathtt{START\_PAXOSED}$ & $ \mathtt{DROP}$ & $<name>$ & coordinator\\ \hline
+$ \mathtt{READY}$  & $ \mathtt{ELECTION}$ & $<name>$ & name\\ \hline
+$ \mathtt{READY\_PAXOSED}$ & $ \mathtt{MERGE}$ & $ \mathtt{MERGE\_ID}$ & \\ \hline
+$ \mathtt{YES}$ & & $ \mathtt{MERGE\_REQ}$ & \\ \hline
+$ \mathtt{YES\_PAXOSED}$ & & $ \mathtt{MERGE\_FWD}$ & \\ \hline
+$ \mathtt{NO}$ &  &  & \\ \hline
+$ \mathtt{WAIT}$ & & & \\ \hline
+$ \mathtt{COMMIT}$ & $ \mathtt{SPLIT}$ & $ \mathtt{SPLIT}$ & \\ \hline
+\end{tabular} 
+\end{center}
+In general the relation between 2PC messages and the message sent to initiate Paxos within this nested protocol is as follows. However, $\mathtt{LEARN}$ messages cannot always fit into this formatting as they each signify a different change in state. For most messages the key used is the type of the 2PC message, the $\mathtt{value}$ field is the 2PC $\mathtt{key}$, the $\mathtt{who}$ field is the 2PC $\mathtt{value}$ and the $\mathtt{tpcFrom}$ is the 2PC $\mathtt{source}$. 
 
-INSERT CHART OF RELATIONSHIP BETWEEN PAXOS AND 2PC MESSAGES
-
-To begin a $\mathtt{MERGE}$, we send a $\mathtt{START}$ message to the coordinator group. The leader of this group Proposes $\mathtt{START}$ as a value in Paxos with a key of $\mathtt{START}$. Once consensus is reached within the group, instead of making the group $\mathtt{LEARN}$ we send a $\mathtt{START\_PAXOSED}$ message back to the leader of the group. In general, upon receiving these $\mathtt{-\_PAXOSED}$ messages, the leaders know the decision has reached consensus within the group and it can move on to the next step of 2PC. When the leader receives this message, it sends a $\mathtt{READY}$ message with a value of $\mathtt{MERGE\_ID}$ to the neighbor it \textit{does not} want to merge with. When that neighbor receives the message, it Paxoses the decision within its group and, upon consensus, sends itself a $\mathtt{READY\_PAXOSED}$ message. 
-At this point it responds to the coordinator with a $\mathtt{YES}$ message. When it gets this message, the coordinator finally sends a $\mathtt{READY}$ message with a value of $\mathtt{MERGE\_REQ}$ for the group it wants to merge with. When that group receives the request, it sends a $\mathtt{READY}$ 2PC message with a value of $\mathtt{MERGE_REQ}$ to its neighbor on the other side. That neighbor blocks Paxoses the $\mathtt{READY}$ and, upon consensus, blocks from everybody except the coordinator. It responds with a $\mathtt{YES}$ to the neighbor who sent it. Once the neighbor the coordinator wants to merge with gets this $\mathtt{YES}$ with a $\mathtt{MERGE_FWD}$ value, it Paxoses the decision to send a $\mathtt{YES}$ to the coordinator. Once this is done, it sends a message attached with its other neighbor (not the coordinator) and its own store back to the coordinator piggy-backed on a $\mathtt{YES}$ with a value $\mathtt{MERGE_REQ}$. When the coordinator receives this second $\mathtt{YES}$, it Paxoses the store it received from the neighbor it wants to merge with, so each member of the group can extend its own store, then performs the merge that returns a new group. This new group contains no leader. Finally the coordinator sends a $\mathtt{COMMIT}$ message containing this new group along to its new side, the side only the neighbor it just merged with knows, and its old side so each can update with a new union neighbor. It also sends a $\mathtt{COMMIT}$ message containing both the new group and its old store to the group it has merged with so that group can update its store and group and lgroup and rgroup. 
+To begin a $\mathtt{MERGE}$, we send a $\mathtt{START}$ message to the coordinator group. The leader of this group Proposes $\mathtt{START}$ as a value in Paxos with a key of $\mathtt{START}$. Once consensus is reached within the group, instead of making the group $\mathtt{LEARN}$ we send a $\mathtt{START\_PAXOSED}$ message back to the leader of the group. In general, upon receiving these $\mathtt{-\_PAXOSED}$ messages, the leaders know the decision has reached consensus within the group and it can move on to the next step of 2PC. When the leader receives this message, it sends a $\mathtt{READY}$ message with a value of $\mathtt{MERGE\_ID}$ to the neighbor it \textit{does not} want to merge with. When that neighbor receives the message, it Paxoses the decision within its group and, upon consensus, sends itself a $\mathtt{READY\_PAXOSED}$ message.
+ 
+At this point it responds to the coordinator with a $\mathtt{YES}$ message. When it gets this message, the coordinator finally sends a $\mathtt{READY}$ message with a value of $\mathtt{MERGE\_REQ}$ for the group it wants to merge with. When that group receives the request, it sends a $\mathtt{READY}$ 2PC message with a value of $\mathtt{MERGE\_REQ}$ to its neighbor on the other side. That neighbor blocks Paxoses the $\mathtt{READY}$ and, upon consensus, blocks from everybody except the coordinator. It responds with a $\mathtt{YES}$ to the neighbor who sent it. Once the neighbor the coordinator wants to merge with gets this $\mathtt{YES}$ with a $\mathtt{MERGE\_FWD}$ value, it Paxoses the decision to send a $\mathtt{YES}$ to the coordinator. Once this is done, it sends a message attached with its other neighbor (not the coordinator) and its own store back to the coordinator piggy-backed on a $\mathtt{YES}$ with a value $\mathtt{MERGE\_REQ}$. When the coordinator receives this second $\mathtt{YES}$, it Paxoses the store it received from the neighbor it wants to merge with, so each member of the group can extend its own store, then performs the merge that returns a new group. This new group contains no leader. Finally the coordinator sends a $\mathtt{COMMIT}$ message containing this new group along to its new side, the side only the neighbor it just merged with knows, and its old side so each can update with a new union neighbor. It also sends a $\mathtt{COMMIT}$ message containing both the new group and its old store to the group it has merged with so that group can update its store and group and lgroup and rgroup. 
 
 To initiate a $\mathtt{SPLIT}$, a much more straightforward operation, a leader proposes to $\mathtt{START}$ similar to as in merge. Once it receives the $\mathtt{START\_PAXOSED}$ it sends out $\mathtt{READY}$ messages to each of its neighbors. They Paxos the $\mathtt{READY}$ messages and, when they receive a $\mathtt{READY_PAXOSED}$ message, send the coordinator their approval in the form of a $\mathtt{YES}$. Once the coordinator receives these two messages, it updates its internal count in $self.okays$ when it receives each $\mathtt{YES}$, it clears its $self.okays$ store and Paxoses the last $\mathtt{YES}$. When it reaches consensus, gets a $\mathtt{YES\_PAXOSED}$, it performs the split. The split produces two groups with half the key range and half the members. To each of the members of each of the groups, the coordinator sends $\mathtt{LEARN}$ messages containing the updated values of $(lgroup, group, rgroup)$ for them to update. It then sends $\mathtt{COMMIT}$ messages to each of the neighboring groups to have them update their internal state corresponding to the $\mathtt{SPLIT}$. 
 
@@ -250,11 +266,23 @@ After sending $\mathtt{LEARN}$ messages to all the members of its group, in eith
 
 Elections are slightly different. They only occur because there is no leader for the group, so there would be no node designated to perform the group operation at all. In this case we elect the leader internally with Paxos before starting 2PC. If there is not a leader for a group, each node who notices this is the Proposer in Paxos. It proposes itself as the new leader and one wins out. In Paxos if the key is $\mathtt{ELECTION}$ once the Proposer gets a majority of $\mathtt{ACCEPTED}$ responses, before it sends $\mathtt{LEARN}$ messages to the group, it sends $\mathtt{COMMIT}$ messages with $\mathtt{ELECTION}$ as a key and its own name, the new leader, as the value to its left group's leader and its right group's leader. Upon receiving these $\mathtt{COMMIT}$ messages, each leader sends $\mathtt{LEARN}$ messages to all the members in its group who update their internal states.
 
-The $\mathtt{set}$ calls are now easy in this structure. When a leader gets a $\mathtt{set}$ message, it Proposes the key and value. In the learning stage each node sets its $self.store[key]$ to the value of the message gets a message because the key, presumably a hashed string, does not match any of the 2PC keys.
+The $\mathtt{set}$ calls are now easy in this structure. When a leader gets a $\mathtt{set}$ message, it Proposes the key and value. In the learning stage each node sets its $\mathtt{self.store[key]}$ to the value of the message gets a message because the key, presumably a hashed string, does not match any of the 2PC keys.
+
+In summary, the way we incorporate 2PC and Paxos together into a nested consensus is by Paxosing the decision to send 2PC messages within a group. At the end, once the coordinator group has received a total of two 2PC $\mathtt{YES}$s, it Paxoses the final $\mathtt{YES}$ and receives back a $\mathtt{YES\_PAXOSED}$. It then performs the group operation and sends $\mathtt{LEARN}$s to its whole group so each member can update its internal state according to a very complicated $\mathtt{LEARN}$ message (it is clear enough from the actual code how this implementation treats $\mathtt{LEARN}$ messages). It then sends out $\mathtt{COMMIT}$ messages to all the groups affected by the operation. Those group leaders, upon receiving the message, send $\mathtt{LEARN}$s to every member of their own group so each of them can update their own internal state accordingly. All these $\mathtt{COMMIT}$s are $\mathtt{ACK}$-ed and consistency is preserved.
 \subsection{Forwarding}
 On this architecture, when a node gets a $\mathtt{get}$ or $\mathtt{set}$ request it forwards the request as either a $\mathtt{getRelay}$ or a $\mathtt{setRelay}$, with its own name in the $\mathtt{parent}$ field, to the leader of an adjacent group who is closer to the key in the key space. When a node receives either type that is intended for itself of $\mathtt{Relay}$ it Paxoses the value if its a $\mathtt{set}$ request or looks up the value for the key if its a $\mathtt{get}$. The node then forwards that value, in the $\mathtt{value}$ field, back to the $\mathtt{parent}$ who originally got the request. That node then sends a $\mathtt{getResponse}$ or a $\mathtt{setResponse}$ with the appropriate value.
 
-Additionally to keep track of the requests, whenever a node receives either a $\mathtt{get}$ or a $\mathtt{getRelay}$ it adds that request to its $pending_reqs$ queue and only takes that same request out of its queue when it gets a $\mathtt{get\_ack}$ with the value it stored for that request. Similarly when a node receives either a $\mathtt{set}$ or a $\mathtt{setRelay}$ it stores it in its $pending_reqs$ in the form mentioned above and only removes it once it receives a $\mathtt{set\_ack}$ with the same request.
+Additionally to keep track of the requests, whenever a node receives either a $\mathtt{get}$ or a $\mathtt{getRelay}$ it adds that request to its $\mathtt{pending\_reqs}$ queue and only takes that same request out of its queue when it gets a $\mathtt{get\_ack}$ with the value it stored for that request. Similarly when a node receives either a $\mathtt{set}$ or a $\mathtt{setRelay}$ it stores it in its $\mathtt{pending_reqs}$ in the form mentioned above and only removes it once it receives a $\mathtt{set\_ack}$ with the same request.
+\subsection{Failures}
+This implementation remains as close as possible to Scatter in hopes that failure tolerance will be equally preserved. Clearly Byzantine faults are tolerated in neither this implementation nor Scatter's implementation.
+
+If the side of groups remains in the optimal range it is unlikely that a whole group will fall. Even though Scatter defines this optimal range as $8$ to $12$ nodes, realistically, in this implementation since the keys and values are replicated among all the members of a group that optimal range will be much smaller. It is still very unlikely that a whole group will fall at once. Single node failures, or double or possibly even triple depending on the size of the group, should be tolerated ideally since every member of a group will have all the keys and values. 
+
+Further if leader elections are frequent enough, a single leader will not carry all the weight of the group and will switch off frequently. We also typically redistribute the leader's store to all the nodes during certain group operations.
+
+By keeping the request queue, we also ensure that every node through which a request passes is responsible for making sure that request is eventually carried out. This ensures consistency further than even specified explicitly in Scatter.
+
+Scatter relies heavily on consistency with fail-stop tolerance, and this project implements a strict interpretation of nested consistency, so ideally it would work just as well as Scatter, however let us prove that with some test scripts.
 \section{Example Scripts}
 
 \section{Challenges with Implementation}
