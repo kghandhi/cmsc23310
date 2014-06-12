@@ -7,4 +7,16 @@ start n6 --peer-names n4,n5,n6 --key-range 16,32 --pred-group n2,n3,n1 --key-ran
 start n7 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
 start n8 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
 start n9 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
-start n0 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
+set n5 15 123
+set n2 45 4200
+get n3 15
+get n8 15
+split partition1 n8
+get n9 45
+split partition2 n9
+get n7 45
+get n3 15
+set n1 2 BOO
+get n7 45 
+set n6 30 FOO
+join partition1
