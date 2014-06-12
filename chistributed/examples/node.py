@@ -32,8 +32,8 @@ DHT_MESSAGES = ["get","getRelay","fwd_getResponse","get_ack","set","setRelay","f
 LOG_CHANGES = True
 LOG_EVERY = False
 LOG_MAINTAIN = False
-LOG_PAXOS = False
-LOG_2PC = False
+LOG_PAXOS = True
+LOG_2PC = True
 LOG_SETS = False
 BLOCKING = False
 
@@ -1169,7 +1169,7 @@ class Node(object):
       comm_ack = ({"parent":  msg["parent"] ,"destination": [ msg["source"] ], "source": self.name, 
                           "type": "COMMIT_ACK", "req": ("commit", msg["key"], msg["value"], msg["destination"] )})
       self.SEND_MSG(comm_ack)
-      
+
       if LOG_2PC: print "sent commit_ack",comm_ack
 
       if BLOCKING:
