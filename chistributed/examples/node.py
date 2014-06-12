@@ -452,7 +452,7 @@ class Node(object):
       if LOG_SETS: print "IN SETRESPONSE_FWD"
       set_respons = ({'type': 'setResponse', 'id': msg['id'], 'value': msg["value"]}) 
       self.SEND_MSG(set_respons) 
-      print "SENT setResponse TO BROKER",set_respons
+      print "SENT setResponse TO BROKER",set_respons,"\n"
 
     elif typ == 'set' or typ == 'setRelay':
       if LOG_SETS: print "MESSAGE: SETRELAY",msg["key"],"to",msg["value"]
@@ -680,6 +680,8 @@ class Node(object):
             
       elif typ == "LEARN":
           if LOG_PAXOS: print "IN LEARN",msg
+
+
           if key == "ELECTION":
             if "which" in msg:
               if msg["which"] == "yourRight":
@@ -703,14 +705,15 @@ class Node(object):
             self.lgroup = dictToGroup( msg["value"][0] )
             self.group = dictToGroup( msg["value"][1] )
             self.rgroup = dictToGroup( msg["value"][2] )
-            self.store = self.store.update(msg["store"]) 
+            self.store = dict(self.store.items() + msg["store"].items())
 
             if LOG_CHANGES:
               print "new L Group",self.lgroup.members
               print "my new Group",self.group.members
               print "new R Group",self.rgroup.members
+              print "my store",self.store
 
-            self.SEND_MSG( {"type":"log","GROUP_CHANGE": {"lgroup":groupToDict(self.lgroup),"group":groupToDict(self.group),"rgroup":groupToDict(self.rgroup)} })
+            #self.SEND_MSG( {"type":"log","GROUP_CHANGE": {"lgroup":groupToDict(self.lgroup),"group":groupToDict(self.group),"rgroup":groupToDict(self.rgroup)} })
 
           elif key == "BLOCK":
             self.BLOCK_2PC = (msg["parent"], msg["value"])
@@ -724,12 +727,13 @@ class Node(object):
             self.lgroup = dictToGroup( msg["value"][0] )
             self.group = dictToGroup( msg["value"][1] )
             self.rgroup = dictToGroup( msg["value"][2] )
-            self.store = self.store.update(msg["store"]) 
+            self.store = dict(self.store.items() + msg["store"].items())
 
             if LOG_CHANGES:
               print "new L Group",self.lgroup.members
               print "my new Group",self.group.members
               print "new R Group",self.rgroup.members
+              print "my store",self.store
 
           elif key == "ADD_OTHER":
             if LOG_2PC: print "IN ADD OTHER",msg
@@ -757,7 +761,7 @@ class Node(object):
             if LOG_CHANGES: print "Dropped",msg["value"],"from group"#,self.group
 
           else:
-            print "UPDATING STORE", key, msg["value"]
+            print "UPDATING STORE", key, msg["value"],"\n"
             if LOG_PAXOS: print "UPDATED STORE"
             self.store[long(key)] = msg["value"]
       else:
@@ -1161,9 +1165,11 @@ class Node(object):
   ################
     elif typ == "COMMIT":
       if LOG_2PC: print "\nRECIEVED COMMIT",msg
+
       comm_ack = ({"parent":  msg["parent"] ,"destination": [ msg["source"] ], "source": self.name, 
                           "type": "COMMIT_ACK", "req": ("commit", msg["key"], msg["value"], msg["destination"] )})
       self.SEND_MSG(comm_ack)
+      
       if LOG_2PC: print "sent commit_ack",comm_ack
 
       if BLOCKING:
@@ -1229,6 +1235,7 @@ class Node(object):
                      ####################
         elif msg["value"] == "MERGE_REQ":
           if LOG_2PC: print "IN MERGE REQ"
+          print "\n\nSTORE??",msg,"\n\n"
           learn_msg = ({"parent" : msg["parent"] ,"destination": self.group.members,
                          "source" : self.name, "type": "LEARN", "p_num":self.group.p_num,
                         "key": "GROUPS", "value": (msg["newGroup"]), "store" : msg["store"]})
