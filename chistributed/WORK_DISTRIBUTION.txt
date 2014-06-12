@@ -1,0 +1,6 @@
+Andrew Muller and Kira Ghandhi
+
+We both extensively planned and mapped out the theory behind our algorithm.  We worked closely together throughout the project, only seperately on the last day for Kira to work largely on the paper and Andrew to work on debugging the code.
+
+
+No additional instructions to compile the code are necessary.
