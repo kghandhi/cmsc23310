@@ -8,4 +8,3 @@ start n7 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-ran
 start n8 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
 start n9 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
 start n0 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
-send { "key":"ELECTION","value":"n1","destination": ["n1"], "type": "START"}
