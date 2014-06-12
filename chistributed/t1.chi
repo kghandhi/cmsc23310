@@ -16,10 +16,7 @@ get n9 45
 split partition2 n9
 get n7 45
 get n3 15
-send { "key":"ELECT","value":"n1","destination": ["n1"], "type": "START"}
-split partition3 n2
-get n6 15
-send { "key":"MERGE","value":"MERGE","destination": ["n1"], "type": "START"}
-get n5 15
-split partition4 n1,n3
-set n4 15
+set n1 2 BOO
+get n7 45 
+set n6 30 FOO
+join partition1

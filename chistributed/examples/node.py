@@ -17,9 +17,9 @@ MIN_GROUP = 2
 #MAX_KEY = int('f'*128, 16)
 MIN_KEY = 0
 MAX_KEY = 48
-TIME_LOOP = 2 #how often we house keep
+TIME_LOOP = 6 #how often we house keep
 
-LEADER_LEASE_TIME = timedelta(0,5)
+LEADER_LEASE_TIME = timedelta(0,10)
 
 TWOPC_MESSAGES = ["START","START_PAXOSED", "READY","READY_PAXOSED", "YES","YES_PAXOSED",
                   "NO","WAIT","COMMIT"]
@@ -32,9 +32,10 @@ DHT_MESSAGES = ["get","getRelay","fwd_getResponse","get_ack","set","setRelay","f
 LOG_CHANGES = True
 LOG_EVERY = False
 LOG_MAINTAIN = False
-LOG_PAXOS = True
-LOG_2PC = True
+LOG_PAXOS = False
+LOG_2PC = False
 LOG_SETS = False
+LOG_HOUSEKEEPING = False
 BLOCKING = False
 
 class Group(object):
@@ -191,18 +192,16 @@ class Node(object):
     #self.loop.add_callback(self.housekeeping)
 
   def housekeeping(self):
-    return
-    print "\n\nIN HOUSEKEEPING"
-    print "MY INFO:",self.lgroup,self.group,self.rgroup
+    if LOG_HOUSEKEEPING: print "\n\nIN HOUSEKEEPING"
+    if LOG_HOUSEKEEPING: print "MY INFO:",self.lgroup,self.group,self.rgroup
     #######################
     #HEARTBEATS
     #######################
     if self.name == self.group.leader:
-      print "PONG CHECK",self.pong
+      if LOG_HOUSEKEEPING: print "PONG CHECK",self.pong
       if not self.pong:
         for mem in self.group.members:
           self.pong[mem] = 0
-
 
       for mem in self.pong:
         if mem[1] == 4:
@@ -210,17 +209,16 @@ class Node(object):
                       "key": "DROP", "value": dead_member}
             self.SEND_MSG(proposal)
 
-      print self.pong
+      if LOG_HOUSEKEEPING: print self.pong
       for mem in self.pong.values():
-        print "\t\t",mem
+        if LOG_HOUSEKEEPING: print "\t\t",mem
         mem += 1
       for mem in self.pong.keys():
         if mem != self.name:
           ping = {"type": "PING", "destination": [mem], "source": self.name}
           self.SEND_MSG(ping)
-          print "SENT PING",ping
+          if LOG_HOUSEKEEPING: print "SENT PING",ping
 
-    
     ##############################
     #CHECK IF KICKED OUT OF GROUP
     ##############################
@@ -234,7 +232,6 @@ class Node(object):
         plz_add["destination"] = [x for x in self.group.members if x != self.name]
       self.SEND_MSG(plz_add)
       print "KICKED OUT OF GROUP, ASKING TO REJOIN",plz_add
-    
     ##########################
     #CHECK GROUPSIZE
     ##########################
@@ -266,15 +263,13 @@ class Node(object):
                     "value": value}
         self.SEND_MSG(handle)
         print "RESENDING UNANSWERED REQ",handle
-    
     ###########################
     ##### CHECK LEADER STATUS
     ###########################
-    if not self.group.leader:
-      proposal = {"type": "PROPOSE", "destination": [self.name], "source": self.name,"tpcFROM":self.name, 
-                  "key": "ELECTION", "value": self.name, "parent": self.name, "who": None, "p_num":self.group.p_num}
+    if self.group.leader or dt.now() > self.group.leaderLease:
+      if LOG_HOUSEKEEPING: print "PROPOSE LEADER CHANGE"
+      proposal = { "key":"ELECTION","value":"n1","destination": ["n1"], "type": "START"}
       self.SEND_MSG(proposal)
-      print "PROPOSE LEADER CHANGE"
     
 
     self.loop.add_timeout(time.time() + TIME_LOOP, self.housekeeping)
@@ -697,7 +692,7 @@ class Node(object):
 
               self.group.leaderLease = dt.now() + LEADER_LEASE_TIME
               if LOG_CHANGES: print "CHANGED LEADER TO",self.group.leader
-              del self.acced["ELECTION"]
+              #del self.acced["ELECTION"]
 
           elif key == "GROUPS":
             if LOG_2PC: print "learn group msg",msg
