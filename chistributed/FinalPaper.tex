@@ -284,8 +284,76 @@ By keeping the request queue, we also ensure that every node through which a req
 
 Scatter relies heavily on consistency with fail-stop tolerance, and this project implements a strict interpretation of nested consistency, so ideally it would work just as well as Scatter, however let us prove that with some test scripts.
 \section{Example Scripts}
+\subsection{Example 1}
+Our first example in $\mathtt{failure.chi}$ is an example of a simple 9 node network.
 
+There are three groups as follows:
+\begin{itemize}
+\item Group1: key range: [0,16), leader: a members: [a,b,c,d]
+\item Group2: key range: [16,20), leader: e, members: [e,f,g,h] 
+\item Group3: key range: [20,23), leader: i, members: [i,j,k] 
+\item Group4: key range: [23,31), leader: l, members: [l,m,n,o]
+\item Group5: key range: [31,38), leader: p members: [p,q,r,s]
+\item Group6: key range: [38,45), leader: t, members: [t,u,v,w]
+\item Group7: key range: [45,48), leader: z, members: [z,x,y]
+\end{itemize}
+\begin{enumerate}
+\item All 26 nodes start.
+\item Send $(\mathtt{set}, \mathtt{key}=23, \mathtt{value}=43)$ to a.
+\item The key for this $\mathtt{set}$ message is in not in a's key range and the optimal direction to send the message is to a's right neighbor, Group2. 
+\item a forwards the message to e. e determines the key is not in it's key range, so its sends the key to Group3.
+\item i gets the $\mathtt{setRelay}$ and determines the $\mathtt{key}$ in its neighbor's key range, so i sends the $\mathtt{setRelay}$ to its right group's leader, l.
+\item l finally receives the $\mathtt{setRelay}$ and determines the $\mathtt{key}$ is in it's group's key range.
+\item l Proposes to Paxos that $\mathtt{key}$ and $\mathtt{value}$ pair.
+\item Consensus is reached, so all members of Group 4 store the key value pair in their $\mathtt{self.store}$s.
+\item l then forwards the message back to the origin of the $\mathtt{set}$ message, a
+\item a receives the $\mathtt{setResponse_fwd}$ from its right neighbor's leader and sends the broker a $\mathtt{setResponse}$ with the value it got from that message
+\item Send $(\mathtt{set}, \mathtt{key}=24, \mathtt{value}=42)$ to b.
+\item A similar process as before happens. The message eventually gets forwarded to l, the leader of Group4.
+\item l proposes this key and value to its members in Paxos. 
+\item They reach consensus and all the members of Group4 learn the value and key pair set.
+\item l then sends a new message back to the origin of the original $ \mathtt{set}$ message, b.
+\item b responds to the broker with the value from l with a $ \mathtt{setResponse}$.
+\item Send $(\mathtt{set}, \mathtt{key}=38, \mathtt{value}=40)$ to z.
+\item Similarly z realizes this key is not in its group's key range, but it also realizes that the key is closer to  its left neighbor's key range, so it forwards the $\mathtt{set}$ to t as a $\mathtt{setRelay}$
+\item t gets the $\mathtt{setRelay}$ and realizes the key is in fact in its group's key range
+\item t proposes the key and value pair in Paxos and does exactly the same thing as in the previous two sets successfully.
+\item Created partition partition1- this partitions the majority of a group including m,n,q on its own
+\item Send $(\mathtt{get}, \mathtt{key}=23)$ to a.
+\item a is not in the partition, so a has no access to the value at 23, but it can still ask the single node left. it does and responds with a $\mathtt{getResponse}$ and the value.
+\item Send $(\mathtt{get}, \mathtt{key}=24)$ to b.
+\item A similar thing happens as before and $b$ finds the value in either l or o and responds to the $\mathtt{get}$ request.
+\item Send $(\mathtt{set}, \mathtt{key}=25, \mathtt{value}=boo)$ to z.
+\item z routes this normally to the group4, which contains only two members, they reach consensus and set the value
+\item the partition is taken down so now m,n,q rejoin.
+\item Send $(\mathtt{get}, \mathtt{key}=24)$ to o.
+\item this action is normal and o just asks the leader what the value is and responds correctly
+\item  Send $(\mathtt{get}, \mathtt{key}=25)$ to q.
+\item This key value was set when q was not in the network, but q responds with the correct value because it just gets the value from its leader.
+\end{enumerate}
+\subsection{Example 2}
+Using the same groups as before we have the following example in $\mathtt{failure1.chi}$.
+\begin{enumerate}
+\item starts the 26 nodes normally
+\item sets the same values as before, but in the Group1 key range
+\item sends a message causing b to propose himself as leader to his own leader, a
+\item b then becomes leader as described earlier in the paper
+\item Send $(\mathtt{get}, \mathtt{key}=1)$ to x.
+\item x returns the correct value by asking the new leader, b for the value
+\item we partition off a and c
+\item we are still able to get the value at 1
+\end{enumerate}
+This simple example shows that with housekeeping and the ability to drop nodes and reelect leaders makes it possible to reballance groups with high failures and remain consistent. 
 \section{Challenges with Implementation}
+In theory, Scatter is a very simple algorithm.  It is a DHT that only keeps track of its immediates neighbor (groups), forwards along requests, and does some in-house upkeep. For these reasons, we were drawn to Scatter.  We already had a PAXOS implementation to fall back upon and we thought that putting this upon a simple DHT structure would be quite simple.  This was not the case.
+\subsection{Issues}  
+Our main issue was overcoming the bothersome broker.  We did not figure out that we could redirect stdout from the nodes to a file soon enough and therefore operated inside a black hole for the beginning of the project.  We stubbornly stuck to our old PAXOS implementation although the JSON message simple was a lot more straightforward than our previous class system.  This caused problems translating our objects from our PAXOS code to the necessary structures for this project.
+The growing (and still growing) problem that came along with this project was the complexity of our code.  Although we tirelessly added print statements and flags to help simplify our output, the structure of our code became very complicated.  Traversing through PAXOS problems and 2PC problems resulted in tweaking here and there that left some areas of the program very confusing.  For example, we realized we we needed to pipe the source of a READY\_FWD message through PAXOS messages so that we could properly return a YES in the future.  The complexity of PAXOS and 2PC intertwined caused our program to become somewhat of a monster.
+\subsection{Challenges}
+Heartbeats are hard.  Again, not in concept.  We have either every member or simply the leader of a group ping his fellow members every so often and if they do not reply with a ping soon enough, the leader proposes to the rest of the group that they should be dropped.  The leader proposed his own re election every so often and if the leaderlease runs out, another group member proposes his own election.  These are simple mechanisms that became convoluted and complex when we tried to 2PC and PAXOS them throughout the system.  In a static environment a dropped member will regain, but when we introduce a flurry of messages it is hard to sort through the chaos to see what is actually happening.
+\subsection{Lessons Learned}
+The most important part of any program is its simplicity.  While PAXOS and 2PC may seem relatively straightforward, after 10 straight hours at a computer one is prone to make small lasting mistakes.  Our distributed system as of right now cannot juggle both leader reelections and the slew of our messages that happen when everything is put together.  We have seen the program work in each of the isolate incidents, but together something terribly goes wrong.  For this reason, we recognize that it would have been significantly better for the implementation of our program if we stayed as methodical as we started out.  We did well drawing out diagrams and mapping out exactly what we needed in the beginning, but in the thick of it we became slightly sloppy and that may have been the end of up.
+
 \begin{thebibliography}{7}
 \bibitem{Paxos}
 Leslie Lamport. \href{http://research.microsoft.com/en-us/um/people/lamport/pubs/lamport-paxos.pdf}{"The Part-Time Parliament,"} ACM Tras. Comput. Syst., 16(2):133-169, May 1998
