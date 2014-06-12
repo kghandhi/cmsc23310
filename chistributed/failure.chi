@@ -24,13 +24,14 @@ start w --peer-names t,u,v,w --key-range 38,45 --pred-group p,q,r,s --key-range1
 start z --peer-names z,x,y --key-range 45,48 --pred-group t,u,v,w --key-range1 38,45 --succ-group a,b,c,d --key-range2 0,16
 start x --peer-names z,x,y --key-range 45,48 --pred-group t,u,v,w --key-range1 38,45 --succ-group a,b,c,d --key-range2 0,16
 start y --peer-names z,x,y --key-range 45,48 --pred-group t,u,v,w --key-range1 38,45 --succ-group a,b,c,d --key-range2 0,16
-set n 23 43
-set o 24 42
-set q 38 40
-set p 36 19
-get o 23 
-split partition1 n,o,p,q
-get m 23
-split partition2 x,z,a
-get a 38
+set a 23 43
+set b 24 42
+set z 38 40
+split partition1 m,n,q
+get a 23
+get b 24
+get c 38
+set d 25 boo
 join partition1
+get o 24
+get q 25
