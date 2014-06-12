@@ -11,5 +11,7 @@ start n8 --peer-names n7,n8 --key-range 48,64 --pred-group n5,n6 --key-range1 32
 start n9 --peer-names n9,n10 --key-range 64,80 --pred-group n7,n8 --key-range1 32,48 --succ-group n1,n2 --key-range2 0,16
 start n10 --peer-names n9,n10 --key-range 64,80 --pred-group n7,n8 --key-range1 32,48 --succ-group n1,n2 --key-range2 0,16 
 set n7 47 1000
-get n1 47
-get n1 47
+get n2 47
+get n3 47
+get n4 47
+set n1 47 BOO
