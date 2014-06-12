@@ -1,0 +1,11 @@
+start n1 --peer-names n2,n3,n1 --key-range 0,16 --pred-group n7,n8,n9 --key-range1 32,48 --succ-group  n4,n5,n6 --key-range2 16,32
+start n2 --peer-names n2,n3,n1 --key-range 0,16 --pred-group n7,n8,n9 --key-range1 32,48 --succ-group  n4,n5,n6 --key-range2 16,32
+start n3 --peer-names n2,n3,n1 --key-range 0,16 --pred-group n7,n8,n9 --key-range1 32,48 --succ-group  n4,n5,n6 --key-range2 16,32
+start n4 --peer-names n4,n5,n6 --key-range 16,32 --pred-group n2,n3,n1 --key-range1 0,16 --succ-group n7,n8,n9 --key-range2 32,48
+start n5 --peer-names n4,n5,n6 --key-range 16,32 --pred-group n2,n3,n1 --key-range1 0,16 --succ-group n7,n8,n9 --key-range2 32,48
+start n6 --peer-names n4,n5,n6 --key-range 16,32 --pred-group n2,n3,n1 --key-range1 0,16 --succ-group n7,n8,n9 --key-range2 32,48 
+start n7 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
+start n8 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
+start n9 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
+start n0 --peer-names n7,n8,n9 --key-range 32,48 --pred-group n4,n5,n6 --key-range1 16,32 --succ-group n2,n3,n1 --key-range2 0,16
+send { "key":"ELECTION","value":"n1","destination": ["n1"], "type": "START"}
